@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Tue, 25 Oct 2022 00:27:20 +0200
+Subject: [PATCH] Small memory usage optimizations.
+
+
+diff --git a/src/main/java/com/destroystokyo/paper/util/maplist/IBlockDataList.java b/src/main/java/com/destroystokyo/paper/util/maplist/IBlockDataList.java
+index 277cfd9d1e8fff5d9b5e534b75c3c5162d58b0b7..3b27c00e81e35bfbc02701dfafe03ed1d492143f 100644
+--- a/src/main/java/com/destroystokyo/paper/util/maplist/IBlockDataList.java
++++ b/src/main/java/com/destroystokyo/paper/util/maplist/IBlockDataList.java
+@@ -15,8 +15,10 @@ public final class IBlockDataList {
+     static final GlobalPalette<BlockState> GLOBAL_PALETTE = new GlobalPalette<>(Block.BLOCK_STATE_REGISTRY);
+ 
+     // map of location -> (index | (location << 16) | (palette id << 32))
+-    private final Short2LongOpenHashMap map = new Short2LongOpenHashMap(2, 0.8f);
+-    {
++    private Short2LongOpenHashMap map; // MultiPaper
++
++    private void initializeMap() {
++        this.map = new Short2LongOpenHashMap(2, 0.8f);
+         this.map.defaultReturnValue(Long.MAX_VALUE);
+     }
+ 
+@@ -54,6 +56,7 @@ public final class IBlockDataList {
+     }
+ 
+     public long add(final int location, final BlockState data) {
++        if (map == null) initializeMap();
+         final long curr = this.map.get((short)location);
+ 
+         if (curr == Long.MAX_VALUE) {
+@@ -82,6 +85,7 @@ public final class IBlockDataList {
+     }
+ 
+     public long remove(final int location) {
++        if (map == null) return Long.MAX_VALUE; // MultiPaper
+         final long ret = this.map.remove((short)location);
+         final int index = getIndexFromRaw(ret);
+         if (ret == Long.MAX_VALUE) {
+@@ -119,10 +123,11 @@ public final class IBlockDataList {
+ 
+     public void clear() {
+         this.size = 0;
+-        this.map.clear();
++        if (this.map != null) this.map.clear(); // MultiPaper
+     }
+ 
+     public LongIterator getRawIterator() {
++        if (map == null) initializeMap();
+         return this.map.values().iterator();
+     }
+ }
+diff --git a/src/main/java/net/minecraft/util/ZeroBitStorage.java b/src/main/java/net/minecraft/util/ZeroBitStorage.java
+index 5d8e9bdf5538b19681f21949368d862fab8a89ad..247b205b6ec6958cbdf00c1bac3b90d40aecc50a 100644
+--- a/src/main/java/net/minecraft/util/ZeroBitStorage.java
++++ b/src/main/java/net/minecraft/util/ZeroBitStorage.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.util;
+ 
++import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+ import java.util.Arrays;
+ import java.util.function.IntConsumer;
+ import org.apache.commons.lang3.Validate;
+@@ -8,6 +9,19 @@ public class ZeroBitStorage implements BitStorage {
+     public static final long[] RAW = new long[0];
+     private final int size;
+ 
++    // MultiPaper - memory optimization start
++    private static final Int2ObjectOpenHashMap<ZeroBitStorage> generatedZeroBitStorage = new Int2ObjectOpenHashMap(128);
++
++    public final static ZeroBitStorage factory(int size) {
++        ZeroBitStorage value = generatedZeroBitStorage.get(size);
++        if (value == null) {
++            value = new ZeroBitStorage(size);
++            generatedZeroBitStorage.put(size, value);
++        }
++        return value;
++    }
++    // MultiPaper - end
++
+     public ZeroBitStorage(int size) {
+         this.size = size;
+     }
+diff --git a/src/main/java/net/minecraft/world/level/chunk/PalettedContainer.java b/src/main/java/net/minecraft/world/level/chunk/PalettedContainer.java
+index 7908360dd47937b2cb702e381802b7b278a5198e..754f180e6b2b893a993867a03c23aff9f5aaa923 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/PalettedContainer.java
++++ b/src/main/java/net/minecraft/world/level/chunk/PalettedContainer.java
+@@ -263,7 +263,7 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+         PalettedContainer.Configuration<T> configuration = paletteProvider.getConfiguration(idList, j);
+         BitStorage bitStorage;
+         if (j == 0) {
+-            bitStorage = new ZeroBitStorage(i);
++            bitStorage = ZeroBitStorage.factory(i);
+         } else {
+             Optional<LongStream> optional = serialized.storage();
+             if (optional.isEmpty()) {
+@@ -377,7 +377,7 @@ public class PalettedContainer<T> implements PaletteResize<T>, PalettedContainer
+ 
+     static record Configuration<T>(Palette.Factory factory, int bits) {
+         public PalettedContainer.Data<T> createData(IdMap<T> idList, PaletteResize<T> listener, int size) {
+-            BitStorage bitStorage = (BitStorage)(this.bits == 0 ? new ZeroBitStorage(size) : new SimpleBitStorage(this.bits, size));
++            BitStorage bitStorage = (BitStorage)(this.bits == 0 ? ZeroBitStorage.factory(size) : new SimpleBitStorage(this.bits, size));
+             Palette<T> palette = this.factory.create(this.bits, idList, listener, List.of());
+             return new PalettedContainer.Data<>(this, bitStorage, palette);
+         }
