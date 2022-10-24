@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 public class ChunkLockManager {
 
-    private static final ConcurrentHashMap<ChunkKey, CompletableFuture<Void>> locks = new ConcurrentHashMap<>();
+    public static final ConcurrentHashMap<ChunkKey, CompletableFuture<Void>> locks = new ConcurrentHashMap<>();
 
     public static void lockUntilWrite(String world, int cx, int cz) {
         locks.put(new ChunkKey(world, cx, cz), new CompletableFuture<Void>().completeOnTimeout(null, 60, TimeUnit.SECONDS));
