@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sun, 23 Oct 2022 01:11:45 +0200
+Subject: [PATCH] Fix bundle "item is null or air" crash.
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/LivingEntity.java b/src/main/java/net/minecraft/world/entity/LivingEntity.java
+index a6deb0329f17ebec1c1e696688ce4497a09c9aea..2bb2d309f8220f03c8ca1fbfb06e4b648f399536 100644
+--- a/src/main/java/net/minecraft/world/entity/LivingEntity.java
++++ b/src/main/java/net/minecraft/world/entity/LivingEntity.java
+@@ -3231,7 +3231,7 @@ public abstract class LivingEntity extends Entity {
+     // Paper start - prevent oversized data
+     public static ItemStack sanitizeItemStack(final ItemStack itemStack, final boolean copyItemStack) {
+         if (EntityUpdatePacket.threadsWritingUpdatePackets.contains(Thread.currentThread().getId())) return itemStack; // MultiPaper - don't run when we're sending internal packets
+-        if (itemStack.isEmpty() || !itemStack.hasTag()) {
++        if (itemStack.isEmpty() || !itemStack.hasTag() || itemStack.getItem() == Items.AIR) {
+             return itemStack;
+         }
+ 
+diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaBundle.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaBundle.java
+index e14318383403f12e26dd7801a9dbdea854df185f..50f3e0f40d09aca47ae763182e93ab887054e6ca 100644
+--- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaBundle.java
++++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaBundle.java
+@@ -122,7 +122,7 @@ public class CraftMetaBundle extends CraftMetaItem implements BundleMeta {
+ 
+     @Override
+     public void addItem(ItemStack item) {
+-        Preconditions.checkArgument(item != null && !item.getType().isAir(), "item is null or air");
++        if (item == null || item.getType().isAir() || item.getAmount() <= 0) return;
+ 
+         if (this.items == null) {
+             this.items = new ArrayList<>();

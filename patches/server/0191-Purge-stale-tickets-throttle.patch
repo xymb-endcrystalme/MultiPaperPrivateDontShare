@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 22 Oct 2022 23:07:55 +0200
+Subject: [PATCH] Purge stale tickets throttle.
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index 1e12079454a5a08e6226c215c08dfa2e32aad5b8..9c244c35e2bab84884e54f68b2b2c69497843c2c 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -724,16 +724,20 @@ public class ServerChunkCache extends ChunkSource {
+     }
+     // CraftBukkit end
+ 
++    int purgeStaleTicketsThrottle = 0; // Xymb
++
+     @Override
+     public void tick(BooleanSupplier shouldKeepTicking, boolean tickChunks) {
+         long globalStart = System.nanoTime(); // Xymb
+ 
++        if(purgeStaleTicketsThrottle++ % 5 == 0) {
+         this.level.getProfiler().push("purge");
+         this.level.timings.doChunkMap.startTiming(); // Spigot
+         this.distanceManager.purgeStaleTickets();
+ 
+         xymb.RapidLogger.i().timedLogRaw(globalStart, "PURGE_STALE_TICKETS"); // Xymb
+         globalStart = System.nanoTime(); // Xymb
++        }
+ 
+         this.runDistanceManagerUpdates();
+ 

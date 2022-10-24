@@ -1,0 +1,184 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 22 Oct 2022 19:41:11 +0200
+Subject: [PATCH] Immensely optimized server<->server chunk data
+
+
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
+index 8d44b749a2750dca78f790941da36dffa5747a0c..831e33d9d1de90eeab44148e4d1370521922c964 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
+@@ -5,6 +5,8 @@ import com.mojang.logging.LogUtils;
+ import com.mojang.serialization.Codec;
+ import com.mojang.serialization.DataResult;
+ import com.mojang.serialization.Dynamic;
++import io.netty.buffer.ByteBuf;
++import io.netty.buffer.Unpooled;
+ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+ import it.unimi.dsi.fastutil.longs.LongSet;
+ import it.unimi.dsi.fastutil.shorts.ShortList;
+@@ -29,6 +31,7 @@ import net.minecraft.nbt.LongArrayTag;
+ import net.minecraft.nbt.NbtOps;
+ import net.minecraft.nbt.ShortTag;
+ import net.minecraft.nbt.Tag;
++import net.minecraft.network.FriendlyByteBuf;
+ import net.minecraft.resources.ResourceLocation;
+ import net.minecraft.server.level.ServerChunkCache;
+ import net.minecraft.server.level.ServerLevel;
+@@ -143,6 +146,12 @@ public class ChunkSerializer {
+     private static final boolean JUST_CORRUPT_IT = Boolean.getBoolean("Paper.ignoreWorldDataVersion");
+     // Paper end
+     public static InProgressChunkHolder loadChunk(ServerLevel world, PoiManager poiStorage, ChunkPos chunkPos, CompoundTag nbt, boolean distinguish) {
++        // MultiPaper start
++        return loadChunk(world, poiStorage, chunkPos, nbt, distinguish, false);
++    }
++
++    public static InProgressChunkHolder loadChunk(ServerLevel world, PoiManager poiStorage, ChunkPos chunkPos, CompoundTag nbt, boolean distinguish, boolean multiPaperSkipConsistencyCheck) {
++        // MultiPaper end
+         java.util.ArrayDeque<Runnable> tasksToExecuteOnMain = new java.util.ArrayDeque<>();
+         // Paper end
+         // Paper start - Do NOT attempt to load chunks saved with newer versions
+@@ -179,6 +188,14 @@ public class ChunkSerializer {
+         Codec<PalettedContainer<Holder<Biome>>> codec = ChunkSerializer.makeBiomeCodecRW(iregistry); // CraftBukkit - read/write
+         boolean flag2 = false;
+ 
++        // MultiPaper start
++        FriendlyByteBuf multiPaperQuickData = null;
++        if (nbt.contains("MultiPaperQuickData")) {
++            byte[] b = nbt.getByteArray("MultiPaperQuickData");
++            multiPaperQuickData = new FriendlyByteBuf(Unpooled.wrappedBuffer(b));
++        }
++        // MultiPaprt end
++
+         DataResult dataresult;
+ 
+         for (int j = 0; j < nbttaglist.size(); ++j) {
+@@ -189,9 +206,17 @@ public class ChunkSerializer {
+             if (k >= 0 && k < achunksection.length) {
+                 Logger logger;
+                 PalettedContainer datapaletteblock;
++                PalettedContainer object; // CraftBukkit - read/write
+                 // Paper start - Anti-Xray - Add preset block states
+                 BlockState[] presetBlockStates = world.chunkPacketBlockController.getPresetBlockStates(world, chunkPos, b0 << 4);
+ 
++                if (multiPaperQuickData != null) { // MultiPaper start
++                    datapaletteblock = new PalettedContainer<>(Block.BLOCK_STATE_REGISTRY, Blocks.AIR.defaultBlockState(), PalettedContainer.Strategy.SECTION_STATES, presetBlockStates);
++                    datapaletteblock.read(multiPaperQuickData);
++                    object = new PalettedContainer<>(iregistry.asHolderIdMap(), iregistry.getHolderOrThrow(Biomes.PLAINS), PalettedContainer.Strategy.SECTION_BIOMES, null); // Paper - Anti-Xray - Add preset biomes
++                    object.read(multiPaperQuickData);
++                    // MultiPaper end
++                } else {
+                 if (nbttagcompound1.contains("block_states", 10)) {
+                     Codec<PalettedContainer<BlockState>> blockStateCodec = presetBlockStates == null ? ChunkSerializer.BLOCK_STATE_CODEC : PalettedContainer.codecRW(Block.BLOCK_STATE_REGISTRY, BlockState.CODEC, PalettedContainer.Strategy.SECTION_STATES, Blocks.AIR.defaultBlockState(), presetBlockStates);
+                     dataresult = blockStateCodec.parse(NbtOps.INSTANCE, nbttagcompound1.getCompound("block_states")).promotePartial((s) -> {
+@@ -205,8 +230,6 @@ public class ChunkSerializer {
+                     // Paper end
+                 }
+ 
+-                PalettedContainer object; // CraftBukkit - read/write
+-
+                 if (nbttagcompound1.contains("biomes", 10)) {
+                     dataresult = codec.parse(NbtOps.INSTANCE, nbttagcompound1.getCompound("biomes")).promotePartial((s) -> {
+                         ChunkSerializer.logErrors(chunkPos, b0, s);
+@@ -217,13 +240,16 @@ public class ChunkSerializer {
+                 } else {
+                     object = new PalettedContainer<>(iregistry.asHolderIdMap(), iregistry.getHolderOrThrow(Biomes.PLAINS), PalettedContainer.Strategy.SECTION_BIOMES, null); // Paper - Anti-Xray - Add preset biomes
+                 }
++                } // MultiPaper
+ 
+                 LevelChunkSection chunksection = new LevelChunkSection(b0, datapaletteblock, (PalettedContainer) object); // CraftBukkit - read/write
+ 
+                 achunksection[k] = chunksection;
++                if (!multiPaperSkipConsistencyCheck) { // MultiPaper
+                 tasksToExecuteOnMain.add(() -> { // Paper - delay this task since we're executing off-main
+                 poiStorage.checkConsistencyWithBlocks(chunkPos, chunksection);
+                 }); // Paper - delay this task since we're executing off-main
++                } // MultiPaper
+             }
+ 
+             boolean flag3 = nbttagcompound1.contains("BlockLight", 7);
+@@ -531,7 +557,14 @@ public class ChunkSerializer {
+         // Paper start
+         return saveChunk(world, chunk, null);
+     }
++
+     public static CompoundTag saveChunk(ServerLevel world, ChunkAccess chunk, @org.checkerframework.checker.nullness.qual.Nullable AsyncSaveData asyncsavedata) {
++        // MultiPaper start
++        return saveChunk(world, chunk, asyncsavedata, false);
++    }
++
++    public static CompoundTag saveChunk(ServerLevel world, ChunkAccess chunk, @org.checkerframework.checker.nullness.qual.Nullable AsyncSaveData asyncsavedata, boolean multiPaperQuickVersion) {
++        // MultiPaper end
+         // Paper end
+         // Paper start - rewrite light impl
+         final int minSection = io.papermc.paper.util.WorldUtil.getMinLightSection(world);
+@@ -587,6 +620,7 @@ public class ChunkSerializer {
+         Registry<Biome> iregistry = world.registryAccess().registryOrThrow(Registry.BIOME_REGISTRY);
+         Codec<PalettedContainerRO<Holder<Biome>>> codec = ChunkSerializer.makeBiomeCodec(iregistry);
+         boolean flag = chunk.isLightCorrect();
++        FriendlyByteBuf multiPaperQuickData = new FriendlyByteBuf(Unpooled.buffer()); // MultiPaper
+ 
+         for (int i = lightenginethreaded.getMinLightSection(); i < lightenginethreaded.getMaxLightSection(); ++i) {
+             int j = chunk.getSectionIndexFromSectionY(i);
+@@ -602,6 +636,14 @@ public class ChunkSerializer {
+ 
+                 if (flag1) {
+                     LevelChunkSection chunksection = achunksection[j];
++
++                    // MultiPaper start
++                    if (multiPaperQuickVersion) {
++                        chunksection.getStates().write(multiPaperQuickData);
++                        chunksection.getBiomes().write(multiPaperQuickData);
++                    } else {
++                    // MultiPaper end
++
+                     DataResult<Tag> dataresult1 = ChunkSerializer.BLOCK_STATE_CODEC.encodeStart(NbtOps.INSTANCE, chunksection.getStates()); // CraftBukkit - decompile error
+                     Logger logger1 = ChunkSerializer.LOGGER;
+ 
+@@ -611,6 +653,7 @@ public class ChunkSerializer {
+                     logger1 = ChunkSerializer.LOGGER;
+                     Objects.requireNonNull(logger1);
+                     nbttagcompound1.put("biomes", (Tag) dataresult1.getOrThrow(false, logger1::error));
++                    } // MultiPaper
+                 }
+ 
+                 // Paper start
+@@ -642,6 +685,12 @@ public class ChunkSerializer {
+             }
+         }
+ 
++        // MultiPaper start
++        if (multiPaperQuickVersion) {
++            nbttagcompound.putByteArray("MultiPaperQuickData", multiPaperQuickData.array());
++        }
++        // MultiPaper end
++
+         nbttagcompound.put("sections", nbttaglist);
+         if (flag) {
+             nbttagcompound.putInt(STARLIGHT_VERSION_TAG, STARLIGHT_LIGHT_VERSION); // Paper
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/RequestChunkPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/RequestChunkPacket.java
+index 2cc9878e44d960a6e55fbb8baa6b2025f15eb122..5fd19325985f65b5195209ab76ff12a04aa3f531 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/RequestChunkPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/RequestChunkPacket.java
+@@ -119,7 +119,7 @@ public class RequestChunkPacket extends ExternalServerPacket {
+                     blockEntitiesToLoad = levelChunk.blockEntitiesToLoad;
+                 }
+ 
+-                CompoundTag tag = ChunkSerializer.write(level, chunk);
++                CompoundTag tag = ChunkSerializer.saveChunk(level, chunk, null, true);
+ 
+                 if (entitiesToLoad != null) {
+                     tag.put("entities", entitiesToLoad);
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
+index ede543cb62ff52a2650856e8ef552df6cec710bc..8cbf1361cf46721c5bde0d9a067ea64dbdf47c2d 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
+@@ -89,7 +89,7 @@ public class SendChunkPacket extends ExternalServerPacket {
+                 } else if (holder.getAvailableChunkNow() instanceof LevelChunk) {
+ //                    LOGGER.warn("Received chunk data " + world + "," + cx + "," + cz + " but it is a level chunk (" + holder.getChunkHolderStatus() + ")");
+                 } else {
+-                    ChunkSerializer.InProgressChunkHolder newChunk = ChunkSerializer.loadChunk(level, level.getPoiManager(), new ChunkPos(cx, cz), tag, true);
++                    ChunkSerializer.InProgressChunkHolder newChunk = ChunkSerializer.loadChunk(level, level.getPoiManager(), new ChunkPos(cx, cz), tag, true, true);
+                     MultiPaper.runSync(() -> newChunk.tasks.forEach(Runnable::run));
+ 
+                     if (newChunk.protoChunk instanceof ImposterProtoChunk imposterProtoChunk) {

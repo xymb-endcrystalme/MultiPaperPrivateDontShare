@@ -1,0 +1,107 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 22 Oct 2022 23:47:47 +0200
+Subject: [PATCH] Rapidlog MultiPaper packets.
+
+
+diff --git a/src/main/java/puregero/multipaper/ExternalServerConnection.java b/src/main/java/puregero/multipaper/ExternalServerConnection.java
+index f70a5cb955ef9682a60cd7816ed93e381ca6a59e..9b9376f0b775d39a18f69200a0ef839a9f46c7c7 100644
+--- a/src/main/java/puregero/multipaper/ExternalServerConnection.java
++++ b/src/main/java/puregero/multipaper/ExternalServerConnection.java
+@@ -8,6 +8,7 @@ import io.netty.channel.socket.SocketChannel;
+ import io.netty.handler.codec.compression.Zstd;
+ import io.netty.handler.codec.haproxy.*;
+ import io.netty.util.internal.SystemPropertyUtil;
++import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+ import net.minecraft.network.*;
+ import net.minecraft.network.protocol.Packet;
+ import net.minecraft.network.protocol.PacketFlow;
+@@ -47,6 +48,10 @@ public class ExternalServerConnection extends ChannelInitializer<SocketChannel>
+     public long lastPacketReceived = 0;
+     public final ConcurrentHashMap<ChunkKey, Consumer<DataInputStream>> entitiesCallbacks = new ConcurrentHashMap<>();
+ 
++    private static long lastTimestamp = 0;
++    private static Object2LongOpenHashMap<Class<?>> packetTimings = new Object2LongOpenHashMap(); // Xymb
++    private static Object2LongOpenHashMap<Class<?>> packetCounts = new Object2LongOpenHashMap(); // Xymb
++
+     public ExternalServerConnection() {
+ 
+     }
+@@ -159,6 +164,18 @@ public class ExternalServerConnection extends ChannelInitializer<SocketChannel>
+     }
+ 
+     public void send(ExternalServerPacket packet) {
++        if (System.nanoTime() - lastTimestamp > 1000000000) {
++            xymb.RapidLogger.i().logRaw("");
++            packetTimings.forEach((classType, totalTime) -> {
++                xymb.RapidLogger.i().logRaw("EXTERNALSERVERPACKET;" + classType.toString() + ";" + String.valueOf(packetCounts.get(classType)) + ";" + String.valueOf(totalTime / 1000000.));
++            });
++            xymb.RapidLogger.i().logRaw("");
++            lastTimestamp = System.nanoTime();
++            packetTimings = new Object2LongOpenHashMap(); // Xymb
++            packetCounts = new Object2LongOpenHashMap(); // Xymb
++        }
++        long start = System.nanoTime();
++
+         if (!channel.isOpen()) {
+             new IOException("Channel is closed for " + externalServer.getName()).printStackTrace();
+         } else {
+@@ -172,6 +189,10 @@ public class ExternalServerConnection extends ChannelInitializer<SocketChannel>
+                 }
+             });
+         }
++
++        start = System.nanoTime() - start; // Xymb
++        packetTimings.addTo(packet.getClass(), start); // Xymb
++        packetCounts.addTo(packet.getClass(), 1); // Xymb
+     }
+ 
+     public void tick() {
+diff --git a/src/main/java/puregero/multipaper/MultiPaperConnection.java b/src/main/java/puregero/multipaper/MultiPaperConnection.java
+index f5490f6edb40d6d1c2449fd0a269bc1d09b861a0..e91f6c5c2e5880d8761a064f899b82ec1419ac05 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperConnection.java
++++ b/src/main/java/puregero/multipaper/MultiPaperConnection.java
+@@ -10,6 +10,7 @@ import io.netty.channel.epoll.EpollEventLoopGroup;
+ import io.netty.channel.epoll.EpollSocketChannel;
+ import io.netty.channel.socket.SocketChannel;
+ import io.netty.channel.socket.nio.NioSocketChannel;
++import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+ import net.minecraft.core.Registry;
+ import net.minecraft.resources.ResourceLocation;
+ import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
+@@ -66,6 +67,10 @@ public class MultiPaperConnection extends ServerBoundMessageHandler {
+     public Map<String, byte[]> dataCache = Maps.newHashMap();
+     public int port = -1;
+ 
++    private static long lastTimestamp = 0;
++    private static Object2LongOpenHashMap<Class<?>> packetTimings = new Object2LongOpenHashMap(); // Xymb
++    private static Object2LongOpenHashMap<Class<?>> packetCounts = new Object2LongOpenHashMap(); // Xymb
++
+     public MultiPaperConnection() {
+         System.setProperty("multipaper.netty.threads", System.getProperty("multipaper.netty.threads", Integer.toString(Math.min(Runtime.getRuntime().availableProcessors(), 3))));
+         myName = MultiPaperConfiguration.get().masterConnection.myName;
+@@ -147,8 +152,24 @@ public class MultiPaperConnection extends ServerBoundMessageHandler {
+     }
+ 
+     public void send(MasterBoundMessage message) {
++        if (System.nanoTime() - lastTimestamp > 1000000000) {
++            xymb.RapidLogger.i().logRaw("");
++            packetTimings.forEach((classType, totalTime) -> {
++                xymb.RapidLogger.i().logRaw("MASTERPACKET;" + classType.toString() + ";" + String.valueOf(packetCounts.get(classType)) + ";" + String.valueOf(totalTime / 1000000.));
++            });
++            xymb.RapidLogger.i().logRaw("");
++            lastTimestamp = System.nanoTime();
++            packetTimings = new Object2LongOpenHashMap(); // Xymb
++            packetCounts = new Object2LongOpenHashMap(); // Xymb
++        }
++        long start = System.nanoTime();
++
+         waitForActiveChannel();
+         channel.writeAndFlush(message);
++
++        start = System.nanoTime() - start; // Xymb
++        packetTimings.addTo(message.getClass(), start); // Xymb
++        packetCounts.addTo(message.getClass(), 1); // Xymb
+     }
+ 
+     public void send(MasterBoundMessage message, Consumer<ServerBoundMessage> callback) {

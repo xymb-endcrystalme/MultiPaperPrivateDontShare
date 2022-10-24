@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 22 Oct 2022 23:18:31 +0200
+Subject: [PATCH] Move achievement triggers to the end of the tick.
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerPlayer.java b/src/main/java/net/minecraft/server/level/ServerPlayer.java
+index 116350167afd5b1bbd69f2542703ab82b3668619..43cea8756cf12eb27cbd2b7461761a6e24cfd2be 100644
+--- a/src/main/java/net/minecraft/server/level/ServerPlayer.java
++++ b/src/main/java/net/minecraft/server/level/ServerPlayer.java
+@@ -754,7 +754,7 @@ public class ServerPlayer extends Player {
+                 this.connection.send(new ClientboundSetExperiencePacket(this.experienceProgress, this.totalExperience, this.experienceLevel));
+             }
+ 
+-            if (this.tickCount % 20 == 0) {
++            if (this.tickCount % 20 == 19) {
+                 CriteriaTriggers.LOCATION.trigger(this);
+             }
+ 

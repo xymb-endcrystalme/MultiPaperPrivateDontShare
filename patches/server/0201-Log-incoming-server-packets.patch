@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 24 Oct 2022 16:48:04 +0200
+Subject: [PATCH] Log incoming server packets.
+
+
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketHandler.java b/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketHandler.java
+index e4ecd29f6fe5c7d10613b9db6c7b7563d21ea02e..c95cd65aa451b0a4a7e4cbca1c4bbe45c350df43 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketHandler.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketHandler.java
+@@ -5,6 +5,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+ import puregero.multipaper.ExternalServerConnection;
++import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+ 
+ import java.net.SocketException;
+ 
+@@ -17,10 +18,30 @@ public class ExternalServerPacketHandler extends SimpleChannelInboundHandler<Ext
+         this.connection = connection;
+     }
+ 
++    private static long lastTimestamp = 0;
++    private static Object2LongOpenHashMap<Class<?>> packetTimings = new Object2LongOpenHashMap(); // Xymb
++    private static Object2LongOpenHashMap<Class<?>> packetCounts = new Object2LongOpenHashMap(); // Xymb
++
+     @Override
+     protected void channelRead0(ChannelHandlerContext ctx, ExternalServerPacket msg) {
++        if (System.nanoTime() - lastTimestamp > 1000000000) {
++            xymb.RapidLogger.i().logRaw("");
++            packetTimings.forEach((classType, totalTime) -> {
++                xymb.RapidLogger.i().logRaw("INCOMINGSERVERPACKET;" + classType.toString() + ";" + String.valueOf(packetCounts.get(classType)) + ";" + String.valueOf(totalTime / 1000000.));
++            });
++            xymb.RapidLogger.i().logRaw("");
++            lastTimestamp = System.nanoTime();
++            packetTimings = new Object2LongOpenHashMap(); // Xymb
++            packetCounts = new Object2LongOpenHashMap(); // Xymb
++        }
++        long start = System.nanoTime();
++
+         connection.lastPacketReceived = System.currentTimeMillis();
+         msg.handle(connection);
++
++        start = System.nanoTime() - start; // Xymb
++        packetTimings.addTo(msg.getClass(), start); // Xymb
++        packetCounts.addTo(msg.getClass(), 1); // Xymb
+     }
+ 
+     @Override

@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sun, 23 Oct 2022 01:17:13 +0200
+Subject: [PATCH] ShouldTickBlocksAt optimization.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/Level.java b/src/main/java/net/minecraft/world/level/Level.java
+index e245a5a2ada71117362ad34e999ef20120db3eb5..48f1df5e9334d430fd46c08670a1824c2f88c13e 100644
+--- a/src/main/java/net/minecraft/world/level/Level.java
++++ b/src/main/java/net/minecraft/world/level/Level.java
+@@ -984,8 +984,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+                 tilesThisCycle--;
+                 toRemove.add(tickingblockentity); // Paper - use removeAll
+                 // Spigot end
+-            } else if (this.shouldTickBlocksAt(tickingblockentity.getPos())) {
+-                if (!MultiPaperChunkHandler.shouldTick(this, tickingblockentity.getPos())) continue; // MultiPaper - should tick
++            } else if (MultiPaperChunkHandler.shouldTick(this, tickingblockentity.getPos()) && this.shouldTickBlocksAt(tickingblockentity.getPos())) { // MultiPaper - should tick
+                 tickingblockentity.tick();
+                 // Paper start - execute chunk tasks during tick
+                 if ((this.tileTickPosition & 7) == 0) {

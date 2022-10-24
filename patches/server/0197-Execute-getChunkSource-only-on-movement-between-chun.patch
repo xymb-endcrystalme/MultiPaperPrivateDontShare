@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 24 Oct 2022 00:02:17 +0200
+Subject: [PATCH] Execute getChunkSource only on movement between chunks.
+
+
+diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index fcda801c02f321e2d954c2e9aee07d9cf7418d76..8f8e3a3571bdf4a75b8c2ab831dec9189be5de47 100644
+--- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -165,6 +165,7 @@ import net.minecraft.world.item.ItemStack;
+ import net.minecraft.world.item.Items;
+ import net.minecraft.world.item.crafting.Recipe;
+ import net.minecraft.world.level.BaseCommandBlock;
++import net.minecraft.world.level.ChunkPos;
+ import net.minecraft.world.level.ClipContext;
+ import net.minecraft.world.level.GameRules;
+ import net.minecraft.world.level.GameType;
+@@ -1448,6 +1449,9 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic
+                         this.player.getLevel().getChunkSource().move(this.player);
+                         this.allowedPlayerTicks = 20; // CraftBukkit
+                     } else {
++                        Level playerStartLevel = this.player.getLevel(); // Xymb optimization
++                        ChunkPos playerStartChunkPosition = this.player.chunkPosition(); // Xymb optimization
++
+                         // CraftBukkit - Make sure the move is valid but then reset it for plugins to modify
+                         double prevX = this.player.getX();
+                         double prevY = this.player.getY();
+@@ -1668,7 +1672,9 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic
+                                 // CraftBukkit end
+ 
+                                 this.clientIsFloating = d12 >= -0.03125D && !flag1 && this.player.gameMode.getGameModeForPlayer() != GameType.SPECTATOR && !this.server.isFlightAllowed() && !this.player.getAbilities().mayfly && !this.player.hasEffect(MobEffects.LEVITATION) && !this.player.isFallFlying() && !this.player.isAutoSpinAttack() && this.noBlocksAround(this.player);
+-                                this.player.getLevel().getChunkSource().move(this.player);
++                                if (this.player.getLevel() != playerStartLevel || this.player.chunkPosition() == playerStartChunkPosition) { // Xymb optimization
++                                    this.player.getLevel().getChunkSource().move(this.player);
++                                }
+                                 this.player.doCheckFallDamage(this.player.getY() - d6, packet.isOnGround());
+                                 this.player.setOnGround(packet.isOnGround());
+                                 if (flag) {
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/SendPacketPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/SendPacketPacket.java
+index 80478852fb8998698d3bb26a2ba20119755ea4dc..d40f6f8e7cf9ced0d9839afbc8710db8b5cacc3d 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/SendPacketPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/SendPacketPacket.java
+@@ -82,7 +82,7 @@ public class SendPacketPacket extends ExternalServerPacket {
+             ServerPlayer player = MinecraftServer.getServer().getPlayerList().getPlayer(uuid);
+ 
+             if (player == null) {
+-                LOGGER.warn("Tried to send a packet to a non-existent player uuid " + uuid);
++//                LOGGER.warn("Tried to send a packet to a non-existent player uuid " + uuid);
+                 continue;
+             }
+ 

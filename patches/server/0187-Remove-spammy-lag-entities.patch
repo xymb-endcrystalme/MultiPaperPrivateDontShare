@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Tue, 30 Aug 2022 02:11:31 +0200
+Subject: [PATCH] Remove spammy lag entities.
+
+Signed-off-by: Xymb <xymb@endcrystal.me>
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index 1e7d986d46f2586d247566ed11ba25914a51c7b0..9f720297a2740c95b9a3a7add8622c8e5784d7b5 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -99,8 +99,11 @@ import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+ import net.minecraft.world.entity.decoration.ArmorStand;
+ import net.minecraft.world.entity.npc.Npc;
+ import net.minecraft.world.entity.player.Player;
++import net.minecraft.world.entity.projectile.AbstractHurtingProjectile;
+ import net.minecraft.world.entity.projectile.FireworkRocketEntity;
+ import net.minecraft.world.entity.projectile.FishingHook;
++import net.minecraft.world.entity.projectile.ThrowableItemProjectile;
++import net.minecraft.world.entity.projectile.ThrowableProjectile;
+ import net.minecraft.world.entity.raid.Raid;
+ import net.minecraft.world.entity.raid.Raids;
+ import net.minecraft.world.item.crafting.RecipeManager;
+@@ -706,9 +709,10 @@ public class ServerLevel extends Level implements WorldGenLevel {
+ 
+         totalEntities = 0; // Xymb
+         totalTicked = 0; // Xymb
+-        Object2LongOpenHashMap<Object> entityTimings = new Object2LongOpenHashMap(); // Xymb
+-        Object2IntOpenHashMap<Object> entityCounts = new Object2IntOpenHashMap(); // Xymb
++        Object2LongOpenHashMap<Class<?>> entityTimings = new Object2LongOpenHashMap(); // Xymb
++        Object2IntOpenHashMap<Class<?>> entityCounts = new Object2IntOpenHashMap(); // Xymb
+         final long TOTAL_TIME_PER_ENTITY_TYPE = 10000000L; // Xymb
++        final int SPAM_LIMIT_PER_ENTITY_TYPE = 1000; // Xymb
+ 
+         if (flag || this.emptyTime++ < 300) {
+             gameprofilerfiller.push("entities");
+@@ -780,6 +784,17 @@ public class ServerLevel extends Level implements WorldGenLevel {
+             xymb.RapidLogger.i().timedLogRaw(globalStart, "ENTITIES;" + getWorld().getName() + ";" + String.valueOf(totalEntities) + ";" + String.valueOf(totalTicked)); // Xymb
+             entityTimings.forEach((classType, totalTime) -> {
+                 xymb.RapidLogger.i().logRaw("ENTITY;" + getWorld().getName() + ";" + classType.toString() + ";" + String.valueOf(entityCounts.get(classType)) + ";" + String.valueOf(totalTime));
++
++                boolean properType = AbstractHurtingProjectile.class.isAssignableFrom(classType) || ThrowableProjectile.class.isAssignableFrom(classType);
++
++                if (properType && totalTime > TOTAL_TIME_PER_ENTITY_TYPE && entityCounts.get(classType).intValue() > SPAM_LIMIT_PER_ENTITY_TYPE) {
++                    long start = System.nanoTime();
++
++                    this.entityTickList.forEach((entity) -> {
++                        if (entity.getClass() == classType) entity.discard();
++                    });
++                    xymb.RapidLogger.i().timedLogRaw(start, "REMOVING_SPAM_ENTITIES;" + getWorld().getName() + ";" + classType.toString());
++                }
+             }); // Xymb
+ 
+             globalStart = System.nanoTime(); // Xymb

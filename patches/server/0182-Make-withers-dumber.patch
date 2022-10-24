@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sun, 1 May 2022 12:02:47 +0200
+Subject: [PATCH] Make withers dumber.
+
+Signed-off-by: Xymb <xymb@endcrystal.me>
+
+diff --git a/src/main/java/net/minecraft/world/entity/boss/wither/WitherBoss.java b/src/main/java/net/minecraft/world/entity/boss/wither/WitherBoss.java
+index 4fb40aa91e0961f1974c74c88fa68359e4ad6b16..3bf03267ce80f855a4153ae506fc6e6f8aee7e53 100644
+--- a/src/main/java/net/minecraft/world/entity/boss/wither/WitherBoss.java
++++ b/src/main/java/net/minecraft/world/entity/boss/wither/WitherBoss.java
+@@ -13,6 +13,7 @@ import net.minecraft.world.effect.MobEffects;
+ import net.minecraft.world.entity.Entity;
+ import net.minecraft.world.entity.EntityType;
+ import net.minecraft.world.entity.LivingEntity;
++import net.minecraft.world.entity.Mob;
+ import net.minecraft.world.entity.MobType;
+ import net.minecraft.world.entity.PowerableMob;
+ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+@@ -116,7 +117,7 @@ public class WitherBoss extends Monster implements PowerableMob, RangedAttackMob
+         this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));
+         this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
+         this.targetSelector.addGoal(1, new HurtByTargetGoal(this, new Class[0]));
+-        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, LivingEntity.class, 0, false, false, WitherBoss.LIVING_ENTITY_SELECTOR));
++        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Mob.class, 0, false, false, WitherBoss.LIVING_ENTITY_SELECTOR));
+     }
+ 
+     @Override

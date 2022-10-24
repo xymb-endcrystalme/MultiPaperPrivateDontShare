@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 24 Oct 2022 02:54:26 +0200
+Subject: [PATCH] Disable blocking chunk load on entity move.
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index fb152d4b08f50c01f89b41831f6c1fa88047e488..0f56ccd588508e14769081a6be5e98182d8afdb0 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -1981,6 +1981,8 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+     }
+ 
+     public void absMoveTo(double x, double y, double z) {
++        if (!((ServerChunkCache) this.level.getChunkSource()).isChunkLoaded((int) Math.floor(this.getX()) >> 4, (int) Math.floor(this.getZ()) >> 4)) return; // MultiPaper
++
+         double d3 = Mth.clamp(x, -3.0E7D, 3.0E7D);
+         double d4 = Mth.clamp(z, -3.0E7D, 3.0E7D);
+ 

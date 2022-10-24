@@ -1,0 +1,427 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Tue, 30 Aug 2022 01:47:12 +0200
+Subject: [PATCH] Rapid logs
+
+Signed-off-by: Xymb <xymb@endcrystal.me>
+
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index a7016ade0b7c622ab5fafbe56a777f51b0531d3a..5d5d15e2723643694c5f36d43c50c01eaa5952c4 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -1412,6 +1412,8 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     public void onServerExit() {}
+ 
+     public void tickServer(BooleanSupplier shouldKeepTicking) {
++        long start = System.nanoTime(); // Xymb
++
+         co.aikar.timings.TimingsManager.FULL_SERVER_TICK.startTiming(); // Paper
+         long i = Util.getNanos();
+ 
+@@ -1448,7 +1450,9 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             }
+         }
+ 
++        long multipaperTick = System.nanoTime(); // Xymb
+         MultiPaper.tick(); // MultiPaper
++        xymb.RapidLogger.i().timedLogRaw(multipaperTick, "MULTIPAPER_TICK;"); // Xymb
+ 
+         // Paper start - incremental chunk and player saving
+         int playerSaveInterval = io.papermc.paper.configuration.GlobalConfiguration.get().playerAutoSave.rate;
+@@ -1500,6 +1504,8 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         this.profiler.pop();
+         org.spigotmc.WatchdogThread.tick(); // Spigot
+         co.aikar.timings.TimingsManager.FULL_SERVER_TICK.stopTiming(); // Paper
++
++        xymb.RapidLogger.i().timedLogRaw(start, "TICK;" + String.valueOf(Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) + ";" + String.valueOf(Runtime.getRuntime().maxMemory()) + "\n").flush(); // Xymb
+     }
+ 
+     public void tickChildren(BooleanSupplier shouldKeepTicking) {
+@@ -1570,11 +1576,15 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+ 
+             try {
+                 worldserver.timings.doTick.startTiming(); // Spigot
++                long startWorld = System.nanoTime(); // Xymb
+                 worldserver.tick(shouldKeepTicking);
++                xymb.RapidLogger.i().timedLogRaw(startWorld, "WORLD;" + worldserver.getWorld().getName()); // Xymb
+                 // Paper start
++                long recalculateRegions = System.nanoTime(); // Xymb
+                 for (final io.papermc.paper.chunk.SingleThreadChunkRegionManager regionManager : worldserver.getChunkSource().chunkMap.regionManagers) {
+                     regionManager.recalculateRegions();
+                 }
++                xymb.RapidLogger.i().timedLogRaw(recalculateRegions, "RECALCULATE_REGIONS;" + worldserver.getWorld().getName()); // Xymb
+                 // Paper end
+                 worldserver.timings.doTick.stopTiming(); // Spigot
+             } catch (Throwable throwable) {
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index 2d5ce36e0ca77d436dabc9ebdcc7fab09e5e586e..1e12079454a5a08e6226c215c08dfa2e32aad5b8 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -726,10 +726,20 @@ public class ServerChunkCache extends ChunkSource {
+ 
+     @Override
+     public void tick(BooleanSupplier shouldKeepTicking, boolean tickChunks) {
++        long globalStart = System.nanoTime(); // Xymb
++
+         this.level.getProfiler().push("purge");
+         this.level.timings.doChunkMap.startTiming(); // Spigot
+         this.distanceManager.purgeStaleTickets();
++
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "PURGE_STALE_TICKETS"); // Xymb
++        globalStart = System.nanoTime(); // Xymb
++
+         this.runDistanceManagerUpdates();
++
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "DISTANCE_MANAGER_UPDATES"); // Xymb
++        globalStart = System.nanoTime(); // Xymb
++
+         this.level.timings.doChunkMap.stopTiming(); // Spigot
+         this.level.getProfiler().popPush("chunks");
+         if (tickChunks) {
+@@ -737,14 +747,23 @@ public class ServerChunkCache extends ChunkSource {
+             this.chunkMap.playerChunkManager.tick(); // Paper - this is mostly is to account for view distance changes
+             this.tickChunks();
+             this.level.timings.chunks.stopTiming(); // Paper - timings
++
++            xymb.RapidLogger.i().timedLogRaw(globalStart, "CHUNK_MANAGER_TICK"); // Xymb
++            globalStart = System.nanoTime(); // Xymb
+         }
+ 
+         this.level.timings.doChunkUnload.startTiming(); // Spigot
+         this.level.getProfiler().popPush("unload");
+         this.chunkMap.tick(shouldKeepTicking);
++
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "CHUNK_MAP_TICK_2"); // Xymb
++        globalStart = System.nanoTime(); // Xymb
++
+         this.level.timings.doChunkUnload.stopTiming(); // Spigot
+         this.level.getProfiler().pop();
+         this.clearCache();
++
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "CLEAR_CACHE"); // Xymb
+     }
+ 
+     private void tickChunks() {
+@@ -757,6 +776,8 @@ public class ServerChunkCache extends ChunkSource {
+         if (flag) {
+             this.chunkMap.tick();
+         } else {
++            long globalStart = System.nanoTime(); // Xymb
++
+             // Paper start - optimize isOutisdeRange
+             ChunkMap playerChunkMap = this.chunkMap;
+             for (ServerPlayer player : this.level.players) {
+@@ -822,6 +843,9 @@ public class ServerChunkCache extends ChunkSource {
+             // Paper end
+             this.level.timings.countNaturalMobs.stopTiming(); // Paper - timings
+ 
++            xymb.RapidLogger.i().timedLogRaw(globalStart, "TICKCHUNKS_PART_1"); // Xymb
++            globalStart = System.nanoTime(); // Xymb
++
+             //this.lastSpawnState = spawnercreature_d; // Pufferfish - this is managed asynchronously
+ 
+             gameprofilerfiller.popPush("filteringLoadedChunks");
+@@ -849,6 +873,9 @@ public class ServerChunkCache extends ChunkSource {
+                 iterator1 = shuffled.iterator();
+             }
+ 
++            xymb.RapidLogger.i().timedLogRaw(globalStart, "TICKCHUNKS_PART_2"); // Xymb
++            globalStart = System.nanoTime(); // Xymb
++
+             int chunksTicked = 0; // Paper
+             try {
+             while (iterator1.hasNext()) {
+@@ -905,6 +932,10 @@ public class ServerChunkCache extends ChunkSource {
+             gameprofilerfiller.pop();
+             // Paper start - use set of chunks requiring updates, rather than iterating every single one loaded
+             gameprofilerfiller.popPush("broadcast");
++
++            xymb.RapidLogger.i().timedLogRaw(globalStart, "TICKCHUNKS_PART_3;" + String.valueOf(chunksTicked)); // Xymb
++            globalStart = System.nanoTime(); // Xymb
++
+             this.level.timings.broadcastChunkUpdates.startTiming(); // Paper - timing
+             if (!this.chunkMap.needsChangeBroadcasting.isEmpty()) {
+                 ReferenceOpenHashSet<ChunkHolder> copy = this.chunkMap.needsChangeBroadcasting.clone();
+@@ -917,6 +948,10 @@ public class ServerChunkCache extends ChunkSource {
+                     }
+                 }
+             }
++
++            xymb.RapidLogger.i().timedLogRaw(globalStart, "TICKCHUNKS_BROADCAST"); // Xymb
++            globalStart = System.nanoTime(); // Xymb
++
+             this.level.timings.broadcastChunkUpdates.stopTiming(); // Paper - timing
+             gameprofilerfiller.pop();
+             // Paper end - use set of chunks requiring updates, rather than iterating every single one loaded
+@@ -929,14 +964,17 @@ public class ServerChunkCache extends ChunkSource {
+                     disabledFlushes.add(connection.connection);
+                 }
+             }
++            long start = System.nanoTime(); // Xymb
+             try { // Paper end - controlled flush for entity tracker packets
+             this.chunkMap.tick();
++            xymb.RapidLogger.i().timedLogRaw(start, "CHUNK_MAP_TICK");
+             // Paper start - controlled flush for entity tracker packets
+             } finally {
+                 for (net.minecraft.network.Connection networkManager : disabledFlushes) {
+                     networkManager.enableAutomaticFlush();
+                 }
+             }
++            xymb.RapidLogger.i().timedLogRaw(globalStart, "FLUSH_ENTITY_PACKETS"); // Xymb
+             // Paper end - controlled flush for entity tracker packets
+         }
+     
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index c199c5a78f76ca045685a3032995bb81aafbe676..0e7125cc92cbf9134c5a7a37fcc622d90c26c187 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -12,6 +12,7 @@ import it.unimi.dsi.fastutil.longs.LongSet;
+ import it.unimi.dsi.fastutil.longs.LongSets;
+ import it.unimi.dsi.fastutil.objects.Object2IntMap.Entry;
+ import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
++import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+ import it.unimi.dsi.fastutil.objects.ObjectIterator;
+ import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+@@ -602,7 +603,12 @@ public class ServerLevel extends Level implements WorldGenLevel {
+         return this.structureManager;
+     }
+ 
++    int totalEntities = 0; // Xymb
++    int totalTicked = 0; // Xymb
++
+     public void tick(BooleanSupplier shouldKeepTicking) {
++        long globalStart = System.nanoTime(); // Xymb
++
+         // Paper start - optimise checkDespawn
+         this.playersAffectingSpawning.clear();
+         for (ServerPlayer player : this.players) {
+@@ -613,6 +619,9 @@ public class ServerLevel extends Level implements WorldGenLevel {
+         // Paper end - optimise checkDespawn
+         ProfilerFiller gameprofilerfiller = this.getProfiler();
+ 
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "CHECK_DESPAWN;" + getWorld().getName()); // Xymb
++        globalStart = System.nanoTime(); // Xymb
++
+         this.handlingTick = true;
+         gameprofilerfiller.push("world border");
+         this.getWorldBorder().tick();
+@@ -644,6 +653,10 @@ public class ServerLevel extends Level implements WorldGenLevel {
+ 
+         this.updateSkyBrightness();
+         this.tickTime();
++
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "WEATHER_SLEEP;" + getWorld().getName()); // Xymb
++        globalStart = System.nanoTime(); // Xymb
++        
+         gameprofilerfiller.popPush("tickPending");
+         timings.scheduledBlocks.startTiming(); // Paper
+         if (!this.isDebug()) {
+@@ -656,26 +669,46 @@ public class ServerLevel extends Level implements WorldGenLevel {
+         }
+         timings.scheduledBlocks.stopTiming(); // Paper
+ 
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "BLOCKS_FLUIDS;" + getWorld().getName()); // Xymb
++        globalStart = System.nanoTime(); // Xymb
++
+         gameprofilerfiller.popPush("raid");
+         this.timings.raids.startTiming(); // Paper - timings
+         this.raids.tick();
+         this.timings.raids.stopTiming(); // Paper - timings
+         gameprofilerfiller.popPush("chunkSource");
++
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "RAIDS;" + getWorld().getName()); // Xymb
++        globalStart = System.nanoTime(); // Xymb
++
+         this.timings.chunkProviderTick.startTiming(); // Paper - timings
+         this.getChunkSource().tick(shouldKeepTicking, true);
+         this.timings.chunkProviderTick.stopTiming(); // Paper - timings
++
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "GET_CHUNK_SOURCE;" + getWorld().getName()); // Xymb
++        globalStart = System.nanoTime(); // Xymb
++
+         gameprofilerfiller.popPush("blockEvents");
+         timings.doSounds.startTiming(); // Spigot
+         this.runBlockEvents();
+         timings.doSounds.stopTiming(); // Spigot
+         this.handlingTick = false;
+         gameprofilerfiller.pop();
++
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "BLOCK_EVENTS;" + getWorld().getName()); // Xymb
++        globalStart = System.nanoTime(); // Xymb
++
+         boolean flag = true || !this.players.isEmpty() || !this.getForcedChunks().isEmpty(); // CraftBukkit - this prevents entity cleanup, other issues on servers with no players
+ 
+         if (flag) {
+             this.resetEmptyTime();
+         }
+ 
++        totalEntities = 0; // Xymb
++        totalTicked = 0; // Xymb
++        Object2LongOpenHashMap<Object> entityTimings = new Object2LongOpenHashMap(); // Xymb
++        Object2IntOpenHashMap<Object> entityCounts = new Object2IntOpenHashMap(); // Xymb
++
+         if (flag || this.emptyTime++ < 300) {
+             gameprofilerfiller.push("entities");
+             timings.tickEntities.startTiming(); // Spigot
+@@ -688,6 +721,7 @@ public class ServerLevel extends Level implements WorldGenLevel {
+             org.spigotmc.ActivationRange.activateEntities(this); // Spigot
+             timings.entityTick.startTiming(); // Spigot
+             this.entityTickList.forEach((entity) -> {
++                totalEntities++; // Xymb
+                 if (!MultiPaperEntitiesHandler.tickEntity(entity)) return; // MultiPaper - should we tick this entity?
+ 
+                 if (!entity.isRemoved()) {
+@@ -711,7 +745,15 @@ public class ServerLevel extends Level implements WorldGenLevel {
+                             gameprofilerfiller.push("tick");
+                             // Airplane start - copied from this.guardEntityTick
+                             try {
++                                totalTicked++; // Xymb
++                                long entityTickTime = System.nanoTime(); // Xymb
++
+                                 this.tickNonPassenger(entity); // Airplane - changed
++
++                                entityTickTime = System.nanoTime() - entityTickTime; // Xymb
++                                entityTimings.addTo(entity.getClass(), entityTickTime); // Xymb
++                                entityCounts.addTo(entity.getClass(), 1); // Xymb
++
+                                 MinecraftServer.getServer().executeMidTickTasks(); // Paper - execute chunk tasks mid tick
+                             } catch (Throwable throwable) {
+                                 if (throwable instanceof ThreadDeath) throw throwable; // Paper
+@@ -731,14 +773,30 @@ public class ServerLevel extends Level implements WorldGenLevel {
+             timings.entityTick.stopTiming(); // Spigot
+             timings.tickEntities.stopTiming(); // Spigot
+             gameprofilerfiller.pop();
++
++            xymb.RapidLogger.i().timedLogRaw(globalStart, "ENTITIES;" + getWorld().getName() + ";" + String.valueOf(totalEntities) + ";" + String.valueOf(totalTicked)); // Xymb
++            entityTimings.forEach((classType, totalTime) -> {
++                xymb.RapidLogger.i().logRaw("ENTITY;" + getWorld().getName() + ";" + classType.toString() + ";" + String.valueOf(entityCounts.get(classType)) + ";" + String.valueOf(totalTime));
++            }); // Xymb
++
++            globalStart = System.nanoTime(); // Xymb
++
+             this.tickBlockEntities();
++
++            xymb.RapidLogger.i().timedLogRaw(globalStart, "BLOCK_ENTITIES;" + getWorld().getName()); // Xymb
++            globalStart = System.nanoTime(); // Xymb
+         }
+ 
+         gameprofilerfiller.push("entityManagement");
+         this.entityManager.tick();
+         gameprofilerfiller.popPush("gameEvents");
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "ENTITY_MANAGEMENT;" + getWorld().getName()); // Xymb
++        globalStart = System.nanoTime(); // Xymb
++
+         this.sendGameEvents();
+         gameprofilerfiller.pop();
++
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "GLOBAL_START;" + getWorld().getName()); // Xymb
+     }
+ 
+     @Override
+diff --git a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+index 85a0669d627fc2cecb6eacec954a79ba1ceb1e3f..16075dd8a628ba96a7062c6f2c86ade0da004b62 100644
+--- a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
++++ b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+@@ -62,6 +62,7 @@ public class MultiPaperConfiguration extends ConfigurationPart {
+         public int ticksPerInactiveEntityTracking = 1;
+         public boolean useEventBasedIo = true;
+         public boolean shulkerBoxItemDropContentsWhenDestroyed = true;
++        public boolean createRapidLogs = false;
+     }
+ 
+     public SyncSettings syncSettings;
+diff --git a/src/main/java/xymb/RapidLogger.java b/src/main/java/xymb/RapidLogger.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..98ad977e0a89f48caa96467f90894712fa267789
+--- /dev/null
++++ b/src/main/java/xymb/RapidLogger.java
+@@ -0,0 +1,88 @@
++package xymb;
++
++import java.io.IOException;
++import java.io.FileWriter;
++import java.io.File;
++import java.nio.file.Files;
++import java.io.BufferedWriter;
++import puregero.multipaper.config.MultiPaperConfiguration;
++
++public class RapidLogger {
++    private static RapidLogger single_instance = null;
++
++    private BufferedWriter bw = null;
++
++    private RapidLogger()
++    {
++        if (MultiPaperConfiguration.get().optimizations.createRapidLogs)
++            this.openFile();
++    }
++
++    public void openFile()
++    {
++        try {
++            File directory = new File("rapidlogs");
++            if (!directory.exists()) directory.mkdir();
++
++            File oldFile = new File("rapidlogs/server.log." + String.valueOf((long)(System.currentTimeMillis() / 1000L)));
++            File newFile = new File("rapidlogs/server.log");
++            if (newFile.exists()) Files.move(newFile.toPath(), oldFile.toPath());
++
++            FileWriter fw = new FileWriter("rapidlogs/server.log", true);
++            bw = new BufferedWriter(fw);
++        } catch (IOException e) {}
++    }
++
++    synchronized public static RapidLogger i()
++    {
++        if (single_instance == null)
++            single_instance = new RapidLogger();
++ 
++        return single_instance;
++    }
++
++    synchronized public RapidLogger logRaw(String module) {
++        if (!MultiPaperConfiguration.get().optimizations.createRapidLogs) return this;
++        try {
++            synchronized(bw) {
++                bw.write(String.valueOf(System.currentTimeMillis()));
++                bw.write(";;");
++                bw.write(module);
++                bw.newLine();
++            }
++        } catch (IOException e) {
++            System.out.println("RapidLogger ERROR! Exception!");
++            openFile();
++        }
++        return this;
++    }
++
++    synchronized public RapidLogger timedLogRaw(long start, String module) {
++        if (!MultiPaperConfiguration.get().optimizations.createRapidLogs) return this;
++        long time = System.nanoTime() - start;
++        try {
++            synchronized(bw) {
++                bw.write(String.valueOf(System.currentTimeMillis()));
++                bw.write(";");
++                bw.write(String.valueOf(time));
++                bw.write(";");
++                bw.write(module);
++                bw.newLine();
++            }
++        } catch (IOException e) {
++            System.out.println("RapidLogger ERROR! Exception!");
++            openFile();
++        }
++        return this;
++    }
++
++    public void flush() {
++        if (!MultiPaperConfiguration.get().optimizations.createRapidLogs) return;
++        try {
++            bw.flush();
++        } catch (IOException e) {
++            System.out.println("RapidLogger ERROR! Exception!");
++            openFile();
++        }
++    }
++}

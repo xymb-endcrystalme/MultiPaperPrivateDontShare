@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 2 May 2022 16:05:35 +0200
+Subject: [PATCH] Add XymbKill command.
+
+Signed-off-by: Xymb <xymb@endcrystal.me>
+
+diff --git a/src/main/java/net/minecraft/commands/Commands.java b/src/main/java/net/minecraft/commands/Commands.java
+index 7c96f7fc5997761426a0c62cad0cab5cc668f282..a726cb05e79488294304b30e3360475555dd935a 100644
+--- a/src/main/java/net/minecraft/commands/Commands.java
++++ b/src/main/java/net/minecraft/commands/Commands.java
+@@ -101,6 +101,7 @@ import net.minecraft.server.commands.TellRawCommand;
+ import net.minecraft.server.commands.TimeCommand;
+ import net.minecraft.server.commands.TitleCommand;
+ import net.minecraft.server.commands.TriggerCommand;
++import net.minecraft.server.commands.XymbKillCommand;
+ import net.minecraft.server.commands.WeatherCommand;
+ import net.minecraft.server.commands.WhitelistCommand;
+ import net.minecraft.server.commands.WorldBorderCommand;
+@@ -182,6 +183,7 @@ public class Commands {
+         TimeCommand.register(this.dispatcher);
+         TitleCommand.register(this.dispatcher);
+         TriggerCommand.register(this.dispatcher);
++        XymbKillCommand.register(this.dispatcher);
+         WeatherCommand.register(this.dispatcher);
+         WorldBorderCommand.register(this.dispatcher);
+         if (JvmProfiler.INSTANCE.isAvailable()) {
+diff --git a/src/main/java/net/minecraft/server/commands/XymbKillCommand.java b/src/main/java/net/minecraft/server/commands/XymbKillCommand.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..1f87b3c1933764df5821cf9321e62614348cdea3
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/commands/XymbKillCommand.java
+@@ -0,0 +1,29 @@
++package net.minecraft.server.commands;
++
++import com.google.common.collect.ImmutableList;
++import com.mojang.brigadier.CommandDispatcher;
++import java.util.Collection;
++import net.minecraft.commands.CommandSourceStack;
++import net.minecraft.commands.Commands;
++import net.minecraft.commands.arguments.EntityArgument;
++import net.minecraft.world.entity.Entity;
++
++public class XymbKillCommand {
++    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
++        dispatcher.register(Commands.literal("xymbkill").requires((source) -> {
++            return source.hasPermission(2);
++        }).executes((context) -> {
++            return kill(context.getSource(), ImmutableList.of(context.getSource().getEntityOrException()));
++        }).then(Commands.argument("targets", EntityArgument.entities()).executes((context) -> {
++            return kill(context.getSource(), EntityArgument.getEntities(context, "targets"));
++        })));
++    }
++
++    private static int kill(CommandSourceStack source, Collection<? extends Entity> targets) {
++        for(Entity entity : targets) {
++            entity.kill();
++        }
++
++        return targets.size();
++    }
++}
