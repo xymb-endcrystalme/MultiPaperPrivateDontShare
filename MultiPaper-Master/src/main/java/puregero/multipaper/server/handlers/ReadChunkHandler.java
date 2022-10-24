@@ -9,16 +9,35 @@ import puregero.multipaper.server.util.RegionFileCache;
 import java.io.File;
 
 public class ReadChunkHandler {
+    static long lastTimestamp = 0;
+    static long counter = 0;
+    static long counterLocal = 0;
+    static long completed = 0;
+
     public static void handle(ServerConnection connection, ReadChunkMessage message) {
+        long nano = System.nanoTime();
+        if (nano - lastTimestamp > 1000000000) {
+            System.out.println("CHUNKREADS " + String.valueOf(counterLocal) + " " + String.valueOf(counter - counterLocal) + " " + String.valueOf(completed) + " " + Thread.currentThread().getName());
+            lastTimestamp = nano;
+            counter = 0;
+            counterLocal = 0;
+            completed = 0;
+        }
+
+        counter++;
+
         if (checkIfLoadedOnAnotherServer(connection, message.world, message.path, message.cx, message.cz, message)) {
             return;
         }
+
+        counterLocal++;
 
         Runnable callback = () -> {
             RegionFileCache.getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz).thenAccept(b -> {
                 if (b == null) {
                     b = new byte[0];
                 }
+                completed++;
                 connection.sendReply(new DataMessageReply(b), message);
             });
         };
