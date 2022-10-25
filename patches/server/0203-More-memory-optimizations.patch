@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Tue, 25 Oct 2022 03:49:34 +0200
+Subject: [PATCH] More memory optimizations.
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
+index 257c3df5aa6734ab36053438e328f816ce3acdff..98d759b7e23fdb3a71fd226a47958adaccbcdc77 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
++++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
+@@ -75,8 +75,8 @@ public class ChunkHolder {
+     private @Nullable Set<BlockPos> blocksToBroadcastToPlayers = null; // MultiPaper
+     private boolean hasChangedSections;
+     private final ShortSet[] changedBlocksPerSection;
+-    private final BitSet blockChangedLightSectionFilter;
+-    private final BitSet skyChangedLightSectionFilter;
++    private BitSet blockChangedLightSectionFilter; // MultiPaper - memory optimization
++    private BitSet skyChangedLightSectionFilter; // MultiPaper - memory optimization
+     private final LevelLightEngine lightEngine;
+     private final ChunkHolder.LevelChangeListener onLevelChange;
+     public final ChunkHolder.PlayerProvider playerProvider;
+@@ -161,8 +161,8 @@ public class ChunkHolder {
+         this.entityTickingChunkFuture = ChunkHolder.UNLOADED_LEVEL_CHUNK_FUTURE;
+         this.chunkToSave = CompletableFuture.completedFuture(null); // CraftBukkit - decompile error
+         this.chunkToSaveHistory = null;
+-        this.blockChangedLightSectionFilter = new BitSet();
+-        this.skyChangedLightSectionFilter = new BitSet();
++        this.blockChangedLightSectionFilter = null; // MultiPaper - memory optimization
++        this.skyChangedLightSectionFilter = null; // MultiPaper - memory optimization
+         this.pendingFullStateConfirmation = CompletableFuture.completedFuture(null); // CraftBukkit - decompile error
+         this.pos = pos;
+         this.levelHeightAccessor = world;
+@@ -336,8 +336,10 @@ public class ChunkHolder {
+                         int l = y - j;
+ 
+                         if (lightType == LightLayer.SKY) {
++                            if (this.skyChangedLightSectionFilter == null) this.skyChangedLightSectionFilter = new BitSet(); // MultiPaper - memory optimization
+                             this.skyChangedLightSectionFilter.set(l);
+                         } else {
++                            if (this.blockChangedLightSectionFilter == null) this.blockChangedLightSectionFilter = new BitSet(); // MultiPaper - memory optimization
+                             this.blockChangedLightSectionFilter.set(l);
+                         }
+ 
+@@ -347,9 +349,21 @@ public class ChunkHolder {
+         }
+     }
+ 
++    // MultiPaper start - memory optimization
++    private boolean skyChangedLightSectionFilterChanged() {
++        if (this.skyChangedLightSectionFilter != null) return this.skyChangedLightSectionFilter.isEmpty();
++        return false;
++    }
++
++    private boolean blockChangedLightSectionFilterChanged() {
++        if (this.blockChangedLightSectionFilter != null) return this.blockChangedLightSectionFilter.isEmpty();
++        return false;
++    }
++    // MultiPaper end
++
+     // Paper start - optimise chunk tick iteration
+     public final boolean needsBroadcastChanges() {
+-        return this.hasChangedSections || !this.skyChangedLightSectionFilter.isEmpty() || !this.blockChangedLightSectionFilter.isEmpty();
++        return this.hasChangedSections || skyChangedLightSectionFilterChanged() || blockChangedLightSectionFilterChanged(); // MultiPaper - memory optimization
+     }
+ 
+     private void addToBroadcastMap() {
+@@ -408,7 +422,7 @@ public class ChunkHolder {
+ 
+             this.resendLight |= i >= 64;
+             if (!broadcastingToOtherServersOnly) // MultiPaper
+-            if (!this.skyChangedLightSectionFilter.isEmpty() || !this.blockChangedLightSectionFilter.isEmpty()) {
++            if (skyChangedLightSectionFilterChanged() || blockChangedLightSectionFilterChanged()) {
+                 this.broadcast(new ClientboundLightUpdatePacket(chunk.getPos(), this.lightEngine, this.skyChangedLightSectionFilter, this.blockChangedLightSectionFilter, true), !this.resendLight);
+                 this.skyChangedLightSectionFilter.clear();
+                 this.blockChangedLightSectionFilter.clear();
