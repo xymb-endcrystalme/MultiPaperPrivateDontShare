@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 22 Oct 2022 23:18:31 +0200
+Subject: [PATCH] Make players in unloaded chunks not block the main thread.
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerPlayer.java b/src/main/java/net/minecraft/server/level/ServerPlayer.java
+index 116350167afd5b1bbd69f2542703ab82b3668619..62a0fc98d60d7403a8d8bc57f7871fc52fb41af0 100644
+--- a/src/main/java/net/minecraft/server/level/ServerPlayer.java
++++ b/src/main/java/net/minecraft/server/level/ServerPlayer.java
+@@ -754,7 +754,7 @@ public class ServerPlayer extends Player {
+                 this.connection.send(new ClientboundSetExperiencePacket(this.experienceProgress, this.totalExperience, this.experienceLevel));
+             }
+ 
+-            if (this.tickCount % 20 == 0) {
++            if (this.tickCount % 20 == 0 && ((ServerChunkCache) this.level.getChunkSource()).isChunkLoaded((int) Math.floor(this.getX()) >> 4, (int) Math.floor(this.getZ()) >> 4)) { // MultiPaper
+                 CriteriaTriggers.LOCATION.trigger(this);
+             }
+ 
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index 0f56ccd588508e14769081a6be5e98182d8afdb0..c240d18a48a2d4795d0fe75defc0a02ab693a4ce 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -1096,6 +1096,7 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+ 
+                 this.setPos(this.getX() + vec3d1.x, this.getY() + vec3d1.y, this.getZ() + vec3d1.z);
+             }
++            if (!((ServerChunkCache) this.level.getChunkSource()).isChunkLoaded((int) Math.floor(this.getX()) >> 4, (int) Math.floor(this.getZ()) >> 4)) return; // MultiPaper
+ 
+             this.level.getProfiler().pop();
+             this.level.getProfiler().push("rest");
+diff --git a/src/main/java/net/minecraft/world/entity/LivingEntity.java b/src/main/java/net/minecraft/world/entity/LivingEntity.java
+index 2bb2d309f8220f03c8ca1fbfb06e4b648f399536..423eae50322f20e394fd989b2b3d3cfe142ea1d9 100644
+--- a/src/main/java/net/minecraft/world/entity/LivingEntity.java
++++ b/src/main/java/net/minecraft/world/entity/LivingEntity.java
+@@ -1955,6 +1955,7 @@ public abstract class LivingEntity extends Entity {
+             return false;
+         } else {
+             BlockPos blockposition = this.blockPosition();
++            if (!((ServerChunkCache) this.level.getChunkSource()).isChunkLoaded(blockposition.getX() >> 4, (int) blockposition.getZ() >> 4)) return false; // MultiPaper
+             BlockState iblockdata = this.getFeetBlockState();
+ 
+             if (iblockdata.is(BlockTags.CLIMBABLE)) {
+diff --git a/src/main/java/net/minecraft/world/entity/player/Player.java b/src/main/java/net/minecraft/world/entity/player/Player.java
+index 7b36c7aaf093ad6144abcc2472c6c2e6a77d20c2..2f7261b71acea518512e402187ed11444e65b58e 100644
+--- a/src/main/java/net/minecraft/world/entity/player/Player.java
++++ b/src/main/java/net/minecraft/world/entity/player/Player.java
+@@ -40,6 +40,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
+ import net.minecraft.network.syncher.EntityDataSerializers;
+ import net.minecraft.network.syncher.SynchedEntityData;
+ import net.minecraft.resources.ResourceLocation;
++import net.minecraft.server.level.ServerChunkCache;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.server.level.ServerPlayer;
+ import net.minecraft.sounds.SoundEvent;
+@@ -245,6 +246,8 @@ public abstract class Player extends LivingEntity {
+ 
+     @Override
+     public void tick() {
++        if (!((ServerChunkCache) this.level.getChunkSource()).isChunkLoaded((int) Math.floor(this.getX()) >> 4, (int) Math.floor(this.getZ()) >> 4)) return; // MultiPaper
++
+         this.noPhysics = this.isSpectator();
+         if (this.isSpectator()) {
+             this.onGround = false;
