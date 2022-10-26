@@ -1,0 +1,112 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Wed, 26 Oct 2022 21:03:24 +0200
+Subject: [PATCH] Optimize LevelChunkTicks memory consumption.
+
+
+diff --git a/src/main/java/net/minecraft/world/ticks/LevelChunkTicks.java b/src/main/java/net/minecraft/world/ticks/LevelChunkTicks.java
+index 9f6c2e5b5d9e8d714a47c770e255d06c0ef7c190..2b69333382767e4630929491698b0045f3ebc751 100644
+--- a/src/main/java/net/minecraft/world/ticks/LevelChunkTicks.java
++++ b/src/main/java/net/minecraft/world/ticks/LevelChunkTicks.java
+@@ -18,20 +18,28 @@ import net.minecraft.nbt.ListTag;
+ import net.minecraft.world.level.ChunkPos;
+ 
+ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickContainerAccess<T> {
+-    private final Queue<ScheduledTick<T>> tickQueue = new PriorityQueue<>(ScheduledTick.DRAIN_ORDER);
++    private Queue<ScheduledTick<T>> tickQueue; // MultiPaper
+     @Nullable
+     private List<SavedTick<T>> pendingTicks;
+-    private final Set<ScheduledTick<?>> ticksPerPosition = new ObjectOpenCustomHashSet<>(ScheduledTick.UNIQUE_TICK_HASH);
++    private Set<ScheduledTick<?>> ticksPerPosition; // MultiPaper
+     @Nullable
+     private BiConsumer<LevelChunkTicks<T>, ScheduledTick<T>> onTickAdded;
+ 
+     public LevelChunkTicks() {
+     }
+ 
++    // MultiPaper start - memory optimization
++    void createQueues() {
++        if (tickQueue == null) tickQueue = new PriorityQueue<>(ScheduledTick.DRAIN_ORDER);
++        if (ticksPerPosition == null) ticksPerPosition = new ObjectOpenCustomHashSet<>(ScheduledTick.UNIQUE_TICK_HASH);
++    }
++    // MultiPaper end
++
+     public LevelChunkTicks(List<SavedTick<T>> ticks) {
+         this.pendingTicks = ticks;
+ 
+         for(SavedTick<T> savedTick : ticks) {
++            createQueues(); // MultiPaper
+             this.ticksPerPosition.add(ScheduledTick.probe(savedTick.type(), savedTick.pos()));
+         }
+ 
+@@ -43,11 +51,13 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+ 
+     @Nullable
+     public ScheduledTick<T> peek() {
++        if (this.tickQueue == null) return null; // MultiPaper
+         return this.tickQueue.peek();
+     }
+ 
+     @Nullable
+     public ScheduledTick<T> poll() {
++        if (this.tickQueue == null) return null; // MultiPaper
+         ScheduledTick<T> scheduledTick = this.tickQueue.poll();
+         if (scheduledTick != null) {
+             this.ticksPerPosition.remove(scheduledTick);
+@@ -58,6 +68,7 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+ 
+     @Override
+     public void schedule(ScheduledTick<T> orderedTick) {
++        createQueues(); // MultiPaper
+         if (this.ticksPerPosition.add(orderedTick)) {
+             this.scheduleUnchecked(orderedTick);
+         }
+@@ -65,6 +76,7 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+     }
+ 
+     private void scheduleUnchecked(ScheduledTick<T> orderedTick) {
++        createQueues(); // MultiPaper
+         this.tickQueue.add(orderedTick);
+         if (this.onTickAdded != null) {
+             this.onTickAdded.accept(this, orderedTick);
+@@ -74,10 +86,12 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+ 
+     @Override
+     public boolean hasScheduledTick(BlockPos pos, T type) {
++        if (this.ticksPerPosition == null) return false; // MultiPaper
+         return this.ticksPerPosition.contains(ScheduledTick.probe(type, pos));
+     }
+ 
+     public void removeIf(Predicate<ScheduledTick<T>> predicate) {
++        if (this.tickQueue == null) return; // MutliPaper
+         Iterator<ScheduledTick<T>> iterator = this.tickQueue.iterator();
+ 
+         while(iterator.hasNext()) {
+@@ -91,12 +105,13 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+     }
+ 
+     public Stream<ScheduledTick<T>> getAll() {
++        if (this.tickQueue == null) return Stream.empty(); // MultiPaper
+         return this.tickQueue.stream();
+     }
+ 
+     @Override
+     public int count() {
+-        return this.tickQueue.size() + (this.pendingTicks != null ? this.pendingTicks.size() : 0);
++        return (this.tickQueue != null ? this.tickQueue.size() : 0) + (this.pendingTicks != null ? this.pendingTicks.size() : 0); // MultiPaper
+     }
+ 
+     @Override
+@@ -108,8 +123,10 @@ public class LevelChunkTicks<T> implements SerializableTickContainer<T>, TickCon
+             }
+         }
+ 
+-        for(ScheduledTick<T> scheduledTick : this.tickQueue) {
+-            listTag.add(SavedTick.saveTick(scheduledTick, function, l));
++        if (this.tickQueue != null) { // MultiPaper
++            for(ScheduledTick<T> scheduledTick : this.tickQueue) {
++                listTag.add(SavedTick.saveTick(scheduledTick, function, l));
++            }
+         }
+ 
+         return listTag;

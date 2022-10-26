@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Wed, 26 Oct 2022 21:47:17 +0200
+Subject: [PATCH] Fix "Chunk is not loaded" spam.
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index 9c244c35e2bab84884e54f68b2b2c69497843c2c..30d077fb5062970eb0985bce23faadc3693b04c9 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -890,9 +890,9 @@ public class ServerChunkCache extends ChunkSource {
+                 // Paper end - optimise chunk tick iteration
+                 ChunkPos chunkcoordintpair = chunk1.getPos();
+ 
+-                if (!chunk1.loaded) {
+-                    LOGGER.warn(chunk1 + " isn't loaded!");
+-                }
++//                if (!chunk1.loaded) {
++//                    LOGGER.warn(chunk1 + " isn't loaded!");
++//                }
+ 
+                 if (getVisibleChunkIfPresent(chunk1.getPos().longKey) == null) {
+                     LOGGER.warn(chunk1 + " isn't in the visible chunks!");
+@@ -903,6 +903,7 @@ public class ServerChunkCache extends ChunkSource {
+                 if (isTicking && !chunk1.hasExternalLockRequest) MultiPaper.lockChunk(chunk1);
+                 if (!isTicking && chunk1.hasExternalLockRequest) MultiPaper.unlockChunk(chunk1);
+                 if (!MultiPaper.isChunkLocal(chunk1)) continue;
++                if (!chunk1.loaded) continue;
+                 // MultiPaper end - Don't tick this chunk if we don't own it
+ 
+                 if ((true || this.level.isNaturalSpawningAllowed(chunkcoordintpair)) && this.chunkMap.anyPlayerCloseEnoughForSpawning(holder, chunkcoordintpair, false)) { // Paper - optimise anyPlayerCloseEnoughForSpawning // Paper - replace player chunk loader system
