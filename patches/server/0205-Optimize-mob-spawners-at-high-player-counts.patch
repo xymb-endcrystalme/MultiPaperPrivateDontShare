@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Wed, 26 Oct 2022 04:49:47 +0200
+Subject: [PATCH] Optimize mob spawners at high player counts.
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/LivingEntity.java b/src/main/java/net/minecraft/world/entity/LivingEntity.java
+index 423eae50322f20e394fd989b2b3d3cfe142ea1d9..cbef2f725d7ad03b8a3dae2ea9590c11d73bde57 100644
+--- a/src/main/java/net/minecraft/world/entity/LivingEntity.java
++++ b/src/main/java/net/minecraft/world/entity/LivingEntity.java
+@@ -144,6 +144,7 @@ import puregero.multipaper.ExternalServerConnection;
+ import puregero.multipaper.MultiPaper;
+ import puregero.multipaper.MultiPaperEffectsHandler;
+ import puregero.multipaper.MultiPaperEntityInteractHandler;
++import puregero.multipaper.config.MultiPaperConfiguration;
+ import puregero.multipaper.externalserverprotocol.EntityUpdatePacket;
+ import puregero.multipaper.externalserverprotocol.HurtEntityPacket;
+ // CraftBukkit end
+@@ -1293,7 +1294,7 @@ public abstract class LivingEntity extends Entity {
+ 
+     public float getHealth() {
+         // CraftBukkit start - Use unscaled health
+-        if (this instanceof ServerPlayer) {
++        if (this instanceof ServerPlayer && !MultiPaperConfiguration.get().optimizations.fastGetHealthSkippingBukkit) { // MultiPaper
+             return (float) ((ServerPlayer) this).getBukkitEntity().getHealth();
+         }
+         // CraftBukkit end
+diff --git a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+index 16075dd8a628ba96a7062c6f2c86ade0da004b62..cf3acb949ca7f0bdc980c857b05c724ccc512e0c 100644
+--- a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
++++ b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+@@ -62,6 +62,7 @@ public class MultiPaperConfiguration extends ConfigurationPart {
+         public int ticksPerInactiveEntityTracking = 1;
+         public boolean useEventBasedIo = true;
+         public boolean shulkerBoxItemDropContentsWhenDestroyed = true;
++        public boolean fastGetHealthSkippingBukkit = false;
+         public boolean createRapidLogs = false;
+     }
+ 
