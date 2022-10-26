@@ -5,7 +5,7 @@ Subject: [PATCH] Immensely optimized server<->server chunk data
 
 
 diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
-index 8d44b749a2750dca78f790941da36dffa5747a0c..831e33d9d1de90eeab44148e4d1370521922c964 100644
+index 8d44b749a2750dca78f790941da36dffa5747a0c..dc3cc38d62d1d8a82e4b354483f3a288ff1ef70f 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
 +++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
 @@ -5,6 +5,8 @@ import com.mojang.logging.LogUtils;
@@ -97,7 +97,7 @@ index 8d44b749a2750dca78f790941da36dffa5747a0c..831e33d9d1de90eeab44148e4d137052
              }
  
              boolean flag3 = nbttagcompound1.contains("BlockLight", 7);
-@@ -531,7 +557,14 @@ public class ChunkSerializer {
+@@ -531,7 +557,15 @@ public class ChunkSerializer {
          // Paper start
          return saveChunk(world, chunk, null);
      }
@@ -108,11 +108,12 @@ index 8d44b749a2750dca78f790941da36dffa5747a0c..831e33d9d1de90eeab44148e4d137052
 +    }
 +
 +    public static CompoundTag saveChunk(ServerLevel world, ChunkAccess chunk, @org.checkerframework.checker.nullness.qual.Nullable AsyncSaveData asyncsavedata, boolean multiPaperQuickVersion) {
++        if (chunk instanceof ProtoChunk) multiPaperQuickVersion = false;
 +        // MultiPaper end
          // Paper end
          // Paper start - rewrite light impl
          final int minSection = io.papermc.paper.util.WorldUtil.getMinLightSection(world);
-@@ -587,6 +620,7 @@ public class ChunkSerializer {
+@@ -587,6 +621,7 @@ public class ChunkSerializer {
          Registry<Biome> iregistry = world.registryAccess().registryOrThrow(Registry.BIOME_REGISTRY);
          Codec<PalettedContainerRO<Holder<Biome>>> codec = ChunkSerializer.makeBiomeCodec(iregistry);
          boolean flag = chunk.isLightCorrect();
@@ -120,7 +121,7 @@ index 8d44b749a2750dca78f790941da36dffa5747a0c..831e33d9d1de90eeab44148e4d137052
  
          for (int i = lightenginethreaded.getMinLightSection(); i < lightenginethreaded.getMaxLightSection(); ++i) {
              int j = chunk.getSectionIndexFromSectionY(i);
-@@ -602,6 +636,14 @@ public class ChunkSerializer {
+@@ -602,6 +637,14 @@ public class ChunkSerializer {
  
                  if (flag1) {
                      LevelChunkSection chunksection = achunksection[j];
@@ -135,7 +136,7 @@ index 8d44b749a2750dca78f790941da36dffa5747a0c..831e33d9d1de90eeab44148e4d137052
                      DataResult<Tag> dataresult1 = ChunkSerializer.BLOCK_STATE_CODEC.encodeStart(NbtOps.INSTANCE, chunksection.getStates()); // CraftBukkit - decompile error
                      Logger logger1 = ChunkSerializer.LOGGER;
  
-@@ -611,6 +653,7 @@ public class ChunkSerializer {
+@@ -611,6 +654,7 @@ public class ChunkSerializer {
                      logger1 = ChunkSerializer.LOGGER;
                      Objects.requireNonNull(logger1);
                      nbttagcompound1.put("biomes", (Tag) dataresult1.getOrThrow(false, logger1::error));
@@ -143,7 +144,7 @@ index 8d44b749a2750dca78f790941da36dffa5747a0c..831e33d9d1de90eeab44148e4d137052
                  }
  
                  // Paper start
-@@ -642,6 +685,12 @@ public class ChunkSerializer {
+@@ -642,6 +686,12 @@ public class ChunkSerializer {
              }
          }
  
