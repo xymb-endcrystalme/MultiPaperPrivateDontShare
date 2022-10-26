@@ -157,7 +157,7 @@ index 8d44b749a2750dca78f790941da36dffa5747a0c..831e33d9d1de90eeab44148e4d137052
          if (flag) {
              nbttagcompound.putInt(STARLIGHT_VERSION_TAG, STARLIGHT_LIGHT_VERSION); // Paper
 diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/RequestChunkPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/RequestChunkPacket.java
-index 2cc9878e44d960a6e55fbb8baa6b2025f15eb122..5fd19325985f65b5195209ab76ff12a04aa3f531 100644
+index 0bf0efa705158b1df1b073cf23669fb018ded4b9..9c4ff3f43b7bf419805129556a303417f4f9e036 100644
 --- a/src/main/java/puregero/multipaper/externalserverprotocol/RequestChunkPacket.java
 +++ b/src/main/java/puregero/multipaper/externalserverprotocol/RequestChunkPacket.java
 @@ -119,7 +119,7 @@ public class RequestChunkPacket extends ExternalServerPacket {
