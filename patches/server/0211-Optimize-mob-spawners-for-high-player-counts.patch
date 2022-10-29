@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 29 Oct 2022 08:31:29 +0200
+Subject: [PATCH] Optimize mob spawners for high player counts.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/EntityGetter.java b/src/main/java/net/minecraft/world/level/EntityGetter.java
+index 3f458ddd4dc04ed28510a212be76bb19e7f6a61e..ddfb57d92d258b08a17ea855e60c764b955ff31a 100644
+--- a/src/main/java/net/minecraft/world/level/EntityGetter.java
++++ b/src/main/java/net/minecraft/world/level/EntityGetter.java
+@@ -139,13 +139,16 @@ public interface EntityGetter {
+         double d4;
+         do {
+             Player entityhuman;
+-            do {
++            while (true) {
+                 if (!iterator.hasNext()) {
+                     return false;
+                 }
+ 
+                 entityhuman = (Player) iterator.next();
+-            } while (!EntitySelector.affectsSpawning.test(entityhuman));
++                d4 = entityhuman.distanceToSqr(d0, d1, d2);
++                if (d3 >= 0.0D && d4 >= d3 * d3) continue;
++                if (EntitySelector.affectsSpawning.test(entityhuman)) break;
++            }
+ 
+             d4 = entityhuman.distanceToSqr(d0, d1, d2);
+         } while (d3 >= 0.0D && d4 >= d3 * d3);

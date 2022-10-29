@@ -1,0 +1,96 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sun, 30 Oct 2022 00:31:54 +0200
+Subject: [PATCH] Add /xymbrapidlog command to toggle rapidlogs.
+
+
+diff --git a/src/main/java/net/minecraft/commands/Commands.java b/src/main/java/net/minecraft/commands/Commands.java
+index a726cb05e79488294304b30e3360475555dd935a..19cb13213095a7f23ba196013214652c5824f845 100644
+--- a/src/main/java/net/minecraft/commands/Commands.java
++++ b/src/main/java/net/minecraft/commands/Commands.java
+@@ -102,6 +102,7 @@ import net.minecraft.server.commands.TimeCommand;
+ import net.minecraft.server.commands.TitleCommand;
+ import net.minecraft.server.commands.TriggerCommand;
+ import net.minecraft.server.commands.XymbKillCommand;
++import net.minecraft.server.commands.XymbRapidlogCommand;
+ import net.minecraft.server.commands.WeatherCommand;
+ import net.minecraft.server.commands.WhitelistCommand;
+ import net.minecraft.server.commands.WorldBorderCommand;
+@@ -184,6 +185,7 @@ public class Commands {
+         TitleCommand.register(this.dispatcher);
+         TriggerCommand.register(this.dispatcher);
+         XymbKillCommand.register(this.dispatcher);
++        XymbRapidlogCommand.register(this.dispatcher);
+         WeatherCommand.register(this.dispatcher);
+         WorldBorderCommand.register(this.dispatcher);
+         if (JvmProfiler.INSTANCE.isAvailable()) {
+diff --git a/src/main/java/net/minecraft/server/commands/XymbRapidlogCommand.java b/src/main/java/net/minecraft/server/commands/XymbRapidlogCommand.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..b9f7c0dfab2e5aa9ca8b38695dcdb5e92fc42241
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/commands/XymbRapidlogCommand.java
+@@ -0,0 +1,28 @@
++package net.minecraft.server.commands;
++
++import com.google.common.collect.ImmutableList;
++import com.mojang.brigadier.CommandDispatcher;
++import java.util.Collection;
++import net.minecraft.commands.CommandSourceStack;
++import net.minecraft.commands.Commands;
++import net.minecraft.commands.arguments.EntityArgument;
++import net.minecraft.network.chat.Component;
++import net.minecraft.world.entity.Entity;
++import puregero.multipaper.config.MultiPaperConfiguration;
++
++public class XymbRapidlogCommand {
++    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
++        dispatcher.register(Commands.literal("xymbrapidlog").requires((source) -> {
++            return source.hasPermission(2);
++        }).executes((context) -> {
++            if (MultiPaperConfiguration.get().optimizations.createRapidLogs) {
++                MultiPaperConfiguration.get().optimizations.createRapidLogs = false;
++                context.getSource().sendSuccess(Component.literal("Rapidlog disabled"), true);
++            } else {
++                MultiPaperConfiguration.get().optimizations.createRapidLogs = true;
++                context.getSource().sendSuccess(Component.literal("Rapidlog enabled"), true);
++            }
++            return 0;
++        }));
++    }
++}
+diff --git a/src/main/java/xymb/RapidLogger.java b/src/main/java/xymb/RapidLogger.java
+index 98ad977e0a89f48caa96467f90894712fa267789..536cdb5d1dbf8f140be3eb22b8e22df6507edb40 100644
+--- a/src/main/java/xymb/RapidLogger.java
++++ b/src/main/java/xymb/RapidLogger.java
+@@ -20,6 +20,7 @@ public class RapidLogger {
+ 
+     public void openFile()
+     {
++        if (bw != null) return;
+         try {
+             File directory = new File("rapidlogs");
+             if (!directory.exists()) directory.mkdir();
+@@ -43,6 +44,7 @@ public class RapidLogger {
+ 
+     synchronized public RapidLogger logRaw(String module) {
+         if (!MultiPaperConfiguration.get().optimizations.createRapidLogs) return this;
++        openFile();
+         try {
+             synchronized(bw) {
+                 bw.write(String.valueOf(System.currentTimeMillis()));
+@@ -59,6 +61,7 @@ public class RapidLogger {
+ 
+     synchronized public RapidLogger timedLogRaw(long start, String module) {
+         if (!MultiPaperConfiguration.get().optimizations.createRapidLogs) return this;
++        openFile();
+         long time = System.nanoTime() - start;
+         try {
+             synchronized(bw) {
+@@ -78,6 +81,7 @@ public class RapidLogger {
+ 
+     public void flush() {
+         if (!MultiPaperConfiguration.get().optimizations.createRapidLogs) return;
++        openFile();
+         try {
+             bw.flush();
+         } catch (IOException e) {
