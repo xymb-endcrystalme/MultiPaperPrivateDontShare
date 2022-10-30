@@ -1,0 +1,96 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sun, 30 Oct 2022 04:48:35 +0100
+Subject: [PATCH] 2000 player optimizations
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
+index f53c9e3de2e78490263c284b53c8ddd10415b2fd..6c4d29bce68023181016e966339658df7d4fd782 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
+@@ -2122,6 +2122,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+     // Paper start - optimised tracker
+     private final void processTrackQueue() {
+         if (this.level.inactiveTracker.tick()) return; // MultiPaper - inactive tracker
++        long globalStart = System.nanoTime();
+ 
+         this.level.timings.tracker1.startTiming();
+         try {
+@@ -2129,10 +2130,13 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+                 // update tracker entry
+                 tracker.updatePlayers(tracker.entity.getPlayersInTrackRange());
+             }
++
+         } finally {
+             this.level.timings.tracker1.stopTiming();
+         }
+ 
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "PROCESS_TRACK_QUEUE_1;" + String.valueOf(this.entityMap.values().size())); // Xymb
++        globalStart = System.nanoTime();
+ 
+         this.level.timings.tracker2.startTiming();
+         try {
+@@ -2142,6 +2146,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+         } finally {
+             this.level.timings.tracker2.stopTiming();
+         }
++        xymb.RapidLogger.i().timedLogRaw(globalStart, "PROCESS_TRACK_QUEUE_2;"); // Xymb
+     }
+     // Paper end - optimised tracker
+ 
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index 3a0fa72f322aa60405542026b05fe75a36e5b729..e24d2987504733eded77d462faf305e4db8b61f8 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -970,17 +970,19 @@ public class ServerChunkCache extends ChunkSource {
+                     disabledFlushes.add(connection.connection);
+                 }
+             }
++            xymb.RapidLogger.i().timedLogRaw(globalStart, "FLUSH_ENTITY_PACKETS_1;" + String.valueOf(disabledFlushes.size())); // Xymb
+             long start = System.nanoTime(); // Xymb
+             try { // Paper end - controlled flush for entity tracker packets
+             this.chunkMap.tick();
+             xymb.RapidLogger.i().timedLogRaw(start, "CHUNK_MAP_TICK");
++            globalStart = System.nanoTime(); // Xymb
+             // Paper start - controlled flush for entity tracker packets
+             } finally {
+                 for (net.minecraft.network.Connection networkManager : disabledFlushes) {
+                     networkManager.enableAutomaticFlush();
+                 }
+             }
+-            xymb.RapidLogger.i().timedLogRaw(globalStart, "FLUSH_ENTITY_PACKETS"); // Xymb
++            xymb.RapidLogger.i().timedLogRaw(globalStart, "FLUSH_ENTITY_PACKETS_2;"); // Xymb
+             // Paper end - controlled flush for entity tracker packets
+         }
+     
+diff --git a/src/main/java/puregero/multipaper/MultiPaper.java b/src/main/java/puregero/multipaper/MultiPaper.java
+index 3ce1a53b6e21387878cb22c66aa5bf250c6b7ccd..2929b1f87a70db784240bb8640092938e36dc0fb 100644
+--- a/src/main/java/puregero/multipaper/MultiPaper.java
++++ b/src/main/java/puregero/multipaper/MultiPaper.java
+@@ -77,6 +77,8 @@ public class MultiPaper {
+         return multiPaperConnection;
+     }
+ 
++    private static int checkInsideBlocksThrottle = 0;
++
+     public static void tick() {
+         for (ServerPlayer player : MinecraftServer.getServer().getPlayerList().players) {
+             if (player instanceof ExternalPlayer externalPlayer) {
+@@ -87,7 +89,8 @@ public class MultiPaper {
+                 }
+                 // Copied from Paper end
+ 
+-                externalPlayer.checkInsideBlocks();
++                if (checkInsideBlocksThrottle % 4 == 0)
++                    externalPlayer.checkInsideBlocks();
+ 
+                 externalPlayer.tickAttackStrength();
+ 
+@@ -110,6 +113,7 @@ public class MultiPaper {
+ 
+             player.connection.reduceSpamCounters();
+         }
++        checkInsideBlocksThrottle++;
+ 
+         for (ExternalServer server : getConnection().getServersMap().values()) {
+             if (server.getConnection() != null) {

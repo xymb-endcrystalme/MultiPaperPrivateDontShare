@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sun, 30 Oct 2022 02:26:52 +0100
+Subject: [PATCH] Rapidlog EntityUpdate packet contents
+
+
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdatePacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdatePacket.java
+index c2c2ecca45978957981ca421dbe7d6bed4def0a7..abbf3ed4babb774dbcc53d6e51c170c1ee7ff3aa 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdatePacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdatePacket.java
+@@ -2,6 +2,7 @@ package puregero.multipaper.externalserverprotocol;
+ 
+ import io.netty.buffer.ByteBuf;
+ import io.netty.buffer.Unpooled;
++import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+ import net.minecraft.network.ConnectionProtocol;
+ import net.minecraft.network.FriendlyByteBuf;
+ import net.minecraft.network.protocol.Packet;
+@@ -65,9 +66,22 @@ public class EntityUpdatePacket extends ExternalServerPacket {
+         out.writeByteArray(buf.array());
+     }
+ 
++    private static long lastTimestamp = 0;
++    private static Object2LongOpenHashMap<Class<?>> packetCounts = new Object2LongOpenHashMap(); // Xymb
++
+     @Override
+     public void handle(ExternalServerConnection connection) {
++        if (System.nanoTime() - lastTimestamp > 1000000000) {
++            xymb.RapidLogger.i().logRaw("");
++            packetCounts.forEach((classType, totalCount) -> {
++                xymb.RapidLogger.i().logRaw("ENTITYUPDATEPACKET;" + classType.toString() + ";" + String.valueOf(totalCount));
++            });
++            xymb.RapidLogger.i().logRaw("");
++            lastTimestamp = System.nanoTime();
++            packetCounts = new Object2LongOpenHashMap(); // Xymb
++        }
+         MultiPaper.runSync(() -> handleLater(connection, 0));
++        packetCounts.addTo(packet.getClass(), 1); // Xymb
+     }
+ 
+     private void handleLater(ExternalServerConnection connection, int depth) {
