@@ -17,10 +17,16 @@ index fb1ae2f92461d5671c19521e0fd795d8c14487b7..7941441d62432af22ae786db1763ab5f
          // Paper end
          MinecraftTimings.timeUpdateTimer.stopTiming(); // Spigot // Paper
 diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
-index f2edf8a48dfc0a85ed3fce8d8254218a0330f2a3..ba44e34fb4246714e3aed1f7a15348a1a4a18607 100644
+index f2edf8a48dfc0a85ed3fce8d8254218a0330f2a3..4ec06973161c98ac07c6893d52cbe03eff69c6a0 100644
 --- a/src/main/java/net/minecraft/server/level/ServerLevel.java
 +++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
-@@ -183,6 +183,7 @@ import puregero.multipaper.MultiPaperChunkHandler;
+@@ -178,11 +178,13 @@ import org.bukkit.event.world.TimeSkipEvent;
+ // CraftBukkit end
+ import it.unimi.dsi.fastutil.ints.IntArrayList; // Paper
+ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet; // Paper
++import puregero.multipaper.ExternalPlayer;
+ import puregero.multipaper.MultiPaper;
+ import puregero.multipaper.MultiPaperChunkHandler;
  import puregero.multipaper.MultiPaperEntitiesHandler;
  import puregero.multipaper.MultiPaperGameEventHandler;
  import puregero.multipaper.MultiPaperInactiveTracker;
@@ -28,7 +34,7 @@ index f2edf8a48dfc0a85ed3fce8d8254218a0330f2a3..ba44e34fb4246714e3aed1f7a15348a1
  import puregero.multipaper.externalserverprotocol.SpawnUpdatePacket;
  import puregero.multipaper.externalserverprotocol.TimeUpdatePacket;
  
-@@ -228,6 +229,7 @@ public class ServerLevel extends Level implements WorldGenLevel {
+@@ -228,6 +230,7 @@ public class ServerLevel extends Level implements WorldGenLevel {
      private final StructureCheck structureCheck;
      private final boolean tickTime;
      public long lastMidTickExecuteFailure; // Paper - execute chunk tasks mid tick
@@ -36,12 +42,35 @@ index f2edf8a48dfc0a85ed3fce8d8254218a0330f2a3..ba44e34fb4246714e3aed1f7a15348a1
  
      // CraftBukkit start
      public final LevelStorageSource.LevelStorageAccess convertable;
+@@ -618,6 +621,10 @@ public class ServerLevel extends Level implements WorldGenLevel {
+             if (net.minecraft.world.entity.EntitySelector.affectsSpawning.test(player)) {
+                 this.playersAffectingSpawning.add(player);
+             }
++            if (MultiPaper.isExternalPlayer(player)) { // MultiPaper
++                ((ExternalPlayer)player).relevant = playersSpatial.isExternalPlayerRelevant(player);
++                System.out.println(String.valueOf(((ExternalPlayer)player).relevant));
++            }
+         }
+         // Paper end - optimise checkDespawn
+         ProfilerFiller gameprofilerfiller = this.getProfiler();
+diff --git a/src/main/java/puregero/multipaper/ExternalPlayer.java b/src/main/java/puregero/multipaper/ExternalPlayer.java
+index 59d9976175d98a17dad4d23afe43f2842fb20b11..7705c8b4cb282a0c57b8044ae4964aef7e9f1812 100644
+--- a/src/main/java/puregero/multipaper/ExternalPlayer.java
++++ b/src/main/java/puregero/multipaper/ExternalPlayer.java
+@@ -40,6 +40,7 @@ public class ExternalPlayer extends ServerPlayer {
+     private final InetSocketAddress address;
+     private boolean sendPackets = true;
+     public boolean updatingData = false;
++    public boolean relevant = true;
+ 
+     public static ExternalPlayer create(ExternalServerConnection externalServerConnection, GameProfile gameProfile, String world, double x, double y, double z, float yaw, float pitch, GameType gamemode, InetSocketAddress address, ProfilePublicKey profilePublicKey, String advancements, String stats, int entityId) {
+         loadedAdvancements.put(gameProfile.getId(), advancements);
 diff --git a/src/main/java/puregero/multipaper/MultiPaperPlayerSpatialList.java b/src/main/java/puregero/multipaper/MultiPaperPlayerSpatialList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..8fe751d5081538781bc2502a6e79f0e6864e3975
+index 0000000000000000000000000000000000000000..cc8cdce41fa7e30ea5216802255bca2c0f2f3fd7
 --- /dev/null
 +++ b/src/main/java/puregero/multipaper/MultiPaperPlayerSpatialList.java
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,86 @@
 +package puregero.multipaper;
 +
 +
@@ -57,33 +86,74 @@ index 0000000000000000000000000000000000000000..8fe751d5081538781bc2502a6e79f0e6
 +    // We assume that players that are more than 33 chunks away can't interact in any way
 +    private static final long REGION_SIZE = 33 * 16 * 2;
 +
-+    private static long coordsToIndex(int x, int z) {
++    private static long coordsToIndexPut(int x, int z) {
 +        return (x + REGION_SIZE / 2) / REGION_SIZE + ((z + REGION_SIZE / 2) / REGION_SIZE) << 31;
 +    }
 +
++    private static long coordsToIndexGet(int x, int z) {
++        return x / REGION_SIZE + (z / REGION_SIZE) << 31;
++    }
++
++
++    public boolean isExternalPlayerRelevant(ServerPlayer player) {
++        long index = coordsToIndexGet((int)player.getX(), (int)player.getZ());
++        System.out.println("X " + String.valueOf(((int)player.getX() - REGION_SIZE / 2) / REGION_SIZE) + " Z " + String.valueOf(((int)player.getZ() - REGION_SIZE / 2) / REGION_SIZE));
++        return localPlayersMap.get(index) != null;
++    }
++
 +    public void update(List<ServerPlayer> players) {
-+        System.out.println("Update?");
 +        Long2IntOpenHashMap localBuckets = new Long2IntOpenHashMap(players.size());
 +        Long2IntOpenHashMap allBuckets = new Long2IntOpenHashMap(players.size());
 +        for (ServerPlayer player: players) {
-+            long index = coordsToIndex((int)player.getX(), (int)player.getZ());
-+            if (player instanceof ExternalPlayer) {
-+                localBuckets.addTo(index, 1);
-+//                localPlayers++;
++            long index0 = coordsToIndexPut((int)player.getX(), (int)player.getZ());
++            long index1 = coordsToIndexPut((int)player.getX() + 1, (int)player.getZ());
++            long index2 = coordsToIndexPut((int)player.getX(), (int)player.getZ() + 1);
++            long index3 = coordsToIndexPut((int)player.getX() + 1, (int)player.getZ() + 1);
++            if (!MultiPaper.isExternalPlayer(player)) {
++                localBuckets.addTo(index0, 1);
++                localBuckets.addTo(index1, 1);
++                localBuckets.addTo(index2, 1);
++                localBuckets.addTo(index3, 1);
 +            }
-+            allBuckets.addTo(index, 1);
++            allBuckets.addTo(index0, 1);
++            allBuckets.addTo(index1, 1);
++            allBuckets.addTo(index2, 1);
++            allBuckets.addTo(index3, 1);
 +        }
++        Long2IntOpenHashMap localAddedCounts = new Long2IntOpenHashMap(localBuckets.size());
++        Long2IntOpenHashMap allAddedCounts = new Long2IntOpenHashMap(allBuckets.size());
 +        localPlayersMap = new Long2ObjectOpenHashMap(localBuckets.size(), Long2ObjectOpenHashMap.VERY_FAST_LOAD_FACTOR);
 +        allPlayersMap = new Long2ObjectOpenHashMap(allBuckets.size(), Long2ObjectOpenHashMap.VERY_FAST_LOAD_FACTOR);
-+        System.out.println(String.valueOf(localBuckets.size()) + " " + String.valueOf(allBuckets.size()));
-+        localBuckets.long2IntFastEntrySet().fastForEach((key, value) -> {
-+//            System.out.println(entry.toString());
++        localBuckets.long2IntEntrySet().fastForEach((entry) -> {
++            localPlayersMap.put(entry.getLongKey(), new Object[entry.getIntValue()]);
 +        });
-+        allPlayersMap = new Long2ObjectOpenHashMap(players.size(), Long2ObjectOpenHashMap.VERY_FAST_LOAD_FACTOR);
-+        Object obj[] = new Object[123];
-+        allPlayersMap.put(123, obj);
-+
-+        System.out.println("Done");
++        allBuckets.long2IntEntrySet().fastForEach((entry) -> {
++            allPlayersMap.put(entry.getLongKey(), new Object[entry.getIntValue()]);
++        });
++        for (ServerPlayer player: players) {
++            long index0 = coordsToIndexPut((int)player.getX(), (int)player.getZ());
++            long index1 = coordsToIndexPut((int)player.getX() + 1, (int)player.getZ());
++            long index2 = coordsToIndexPut((int)player.getX(), (int)player.getZ() + 1);
++            long index3 = coordsToIndexPut((int)player.getX() + 1, (int)player.getZ() + 1);
++            if (!MultiPaper.isExternalPlayer(player)) {
++                ((Object[])localPlayersMap.get(index0))[localAddedCounts.get(index0)] = player;
++                localAddedCounts.addTo(index0, 1);
++                ((Object[])localPlayersMap.get(index1))[localAddedCounts.get(index1)] = player;
++                localAddedCounts.addTo(index1, 1);
++                ((Object[])localPlayersMap.get(index2))[localAddedCounts.get(index2)] = player;
++                localAddedCounts.addTo(index2, 1);
++                ((Object[])localPlayersMap.get(index3))[localAddedCounts.get(index3)] = player;
++                localAddedCounts.addTo(index3, 1);
++            }
++            ((Object[])allPlayersMap.get(index0))[allAddedCounts.get(index0)] = player;
++            allAddedCounts.addTo(index0, 1);
++            ((Object[])allPlayersMap.get(index1))[allAddedCounts.get(index1)] = player;
++            allAddedCounts.addTo(index1, 1);
++            ((Object[])allPlayersMap.get(index2))[allAddedCounts.get(index2)] = player;
++            allAddedCounts.addTo(index2, 1);
++            ((Object[])allPlayersMap.get(index3))[allAddedCounts.get(index3)] = player;
++            allAddedCounts.addTo(index3, 1);
++        }
 +    }
 +
 +}
