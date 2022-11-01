@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Tue, 1 Nov 2022 11:29:39 +0100
+Subject: [PATCH] WIP
+
+
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index fb1ae2f92461d5671c19521e0fd795d8c14487b7..7941441d62432af22ae786db1763ab5f8ec2334c 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -1546,6 +1546,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+                     new ClientboundSetTimePacket(worldTime, playerTime, doDaylight);
+                 entityplayer.connection.send(packet); // Add support for per player time
+             }
++            world.playersSpatial.update(world.players); // MultiPaper
+         }
+         // Paper end
+         MinecraftTimings.timeUpdateTimer.stopTiming(); // Spigot // Paper
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index f2edf8a48dfc0a85ed3fce8d8254218a0330f2a3..ba44e34fb4246714e3aed1f7a15348a1a4a18607 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -183,6 +183,7 @@ import puregero.multipaper.MultiPaperChunkHandler;
+ import puregero.multipaper.MultiPaperEntitiesHandler;
+ import puregero.multipaper.MultiPaperGameEventHandler;
+ import puregero.multipaper.MultiPaperInactiveTracker;
++import puregero.multipaper.MultiPaperPlayerSpatialList;
+ import puregero.multipaper.externalserverprotocol.SpawnUpdatePacket;
+ import puregero.multipaper.externalserverprotocol.TimeUpdatePacket;
+ 
+@@ -228,6 +229,7 @@ public class ServerLevel extends Level implements WorldGenLevel {
+     private final StructureCheck structureCheck;
+     private final boolean tickTime;
+     public long lastMidTickExecuteFailure; // Paper - execute chunk tasks mid tick
++    public MultiPaperPlayerSpatialList playersSpatial = new MultiPaperPlayerSpatialList(); // MultiPaper
+ 
+     // CraftBukkit start
+     public final LevelStorageSource.LevelStorageAccess convertable;
+diff --git a/src/main/java/puregero/multipaper/MultiPaperPlayerSpatialList.java b/src/main/java/puregero/multipaper/MultiPaperPlayerSpatialList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..8fe751d5081538781bc2502a6e79f0e6864e3975
+--- /dev/null
++++ b/src/main/java/puregero/multipaper/MultiPaperPlayerSpatialList.java
+@@ -0,0 +1,45 @@
++package puregero.multipaper;
++
++
++import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
++import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
++import java.util.List;
++import net.minecraft.server.level.ServerPlayer;
++
++public class MultiPaperPlayerSpatialList {
++    private Long2ObjectOpenHashMap localPlayersMap = new Long2ObjectOpenHashMap();
++    private Long2ObjectOpenHashMap allPlayersMap = new Long2ObjectOpenHashMap();
++
++    // We assume that players that are more than 33 chunks away can't interact in any way
++    private static final long REGION_SIZE = 33 * 16 * 2;
++
++    private static long coordsToIndex(int x, int z) {
++        return (x + REGION_SIZE / 2) / REGION_SIZE + ((z + REGION_SIZE / 2) / REGION_SIZE) << 31;
++    }
++
++    public void update(List<ServerPlayer> players) {
++        System.out.println("Update?");
++        Long2IntOpenHashMap localBuckets = new Long2IntOpenHashMap(players.size());
++        Long2IntOpenHashMap allBuckets = new Long2IntOpenHashMap(players.size());
++        for (ServerPlayer player: players) {
++            long index = coordsToIndex((int)player.getX(), (int)player.getZ());
++            if (player instanceof ExternalPlayer) {
++                localBuckets.addTo(index, 1);
++//                localPlayers++;
++            }
++            allBuckets.addTo(index, 1);
++        }
++        localPlayersMap = new Long2ObjectOpenHashMap(localBuckets.size(), Long2ObjectOpenHashMap.VERY_FAST_LOAD_FACTOR);
++        allPlayersMap = new Long2ObjectOpenHashMap(allBuckets.size(), Long2ObjectOpenHashMap.VERY_FAST_LOAD_FACTOR);
++        System.out.println(String.valueOf(localBuckets.size()) + " " + String.valueOf(allBuckets.size()));
++        localBuckets.long2IntFastEntrySet().fastForEach((key, value) -> {
++//            System.out.println(entry.toString());
++        });
++        allPlayersMap = new Long2ObjectOpenHashMap(players.size(), Long2ObjectOpenHashMap.VERY_FAST_LOAD_FACTOR);
++        Object obj[] = new Object[123];
++        allPlayersMap.put(123, obj);
++
++        System.out.println("Done");
++    }
++
++}
