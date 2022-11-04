@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Fri, 4 Nov 2022 14:23:27 +0100
+Subject: [PATCH] Fix a chunk memory leak.
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueueSorter.java b/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueueSorter.java
+index b77cf467f149f07a6c9513457947efb367d9e779..032f4a2ba09683481c5e4abdb441331459b07e0d 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueueSorter.java
++++ b/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueueSorter.java
+@@ -67,21 +67,23 @@ public class ChunkTaskPriorityQueueSorter implements ChunkHolder.LevelChangeList
+     }
+ 
+     public <T> ProcessorHandle<ChunkTaskPriorityQueueSorter.Message<T>> getProcessor(ProcessorHandle<T> executor, boolean addBlocker) {
+-        return this.mailbox.ask((yield) -> {
++        return (ProcessorHandle<Message<T>>)this.mailbox.ask((yield) -> {
+             return new StrictQueue.IntRunnable(0, () -> {
+                 this.getQueue(executor);
+                 yield.tell(ProcessorHandle.of("chunk priority sorter around " + executor.name(), (task) -> {
+-                    this.submit(executor, task.task, task.pos, task.level, addBlocker);
++                    var t = (Message<T>)task;
++                    this.submit(executor, t.task, t.pos, t.level, addBlocker);
+                 }));
+             });
+         }).join();
+     }
+ 
+     public ProcessorHandle<ChunkTaskPriorityQueueSorter.Release> getReleaseProcessor(ProcessorHandle<Runnable> executor) {
+-        return this.mailbox.ask((yield) -> {
++        return (ProcessorHandle<ChunkTaskPriorityQueueSorter.Release>)this.mailbox.ask((yield) -> {
+             return new StrictQueue.IntRunnable(0, () -> {
+                 yield.tell(ProcessorHandle.of("chunk priority sorter around " + executor.name(), (message) -> {
+-                    this.release(executor, message.pos, message.task, message.clearQueue);
++                    var t = (Release)message;
++                    this.release(executor, t.pos, t.task, t.clearQueue);
+                 }));
+             });
+         }).join();
+@@ -152,7 +154,7 @@ public class ChunkTaskPriorityQueueSorter implements ChunkHolder.LevelChangeList
+         if (chunkTaskPriorityQueue == null) {
+             throw (IllegalArgumentException)Util.pauseInIde(new IllegalArgumentException("No queue for: " + actor));
+         } else {
+-            return chunkTaskPriorityQueue;
++            return (ChunkTaskPriorityQueue<Function<ProcessorHandle<Unit>,T>>)chunkTaskPriorityQueue;
+         }
+     }
+ 
+@@ -171,9 +173,9 @@ public class ChunkTaskPriorityQueueSorter implements ChunkHolder.LevelChangeList
+     }
+ 
+     public static final class Message<T> {
+-        final Function<ProcessorHandle<Unit>, T> task;
+-        final long pos;
+-        final IntSupplier level;
++        public final Function<ProcessorHandle<Unit>, T> task;
++        public final long pos;
++        public final IntSupplier level;
+ 
+         Message(Function<ProcessorHandle<Unit>, T> taskFunction, long pos, IntSupplier lastLevelUpdatedToProvider) {
+             this.task = taskFunction;
+@@ -183,9 +185,9 @@ public class ChunkTaskPriorityQueueSorter implements ChunkHolder.LevelChangeList
+     }
+ 
+     public static final class Release {
+-        final Runnable task;
+-        final long pos;
+-        final boolean clearQueue;
++        public final Runnable task;
++        public final long pos;
++        public final boolean clearQueue;
+ 
+         Release(Runnable callback, long pos, boolean removeTask) {
+             this.task = callback;
