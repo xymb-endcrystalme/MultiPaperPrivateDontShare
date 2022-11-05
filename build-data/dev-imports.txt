@@ -9,5 +9,5 @@
 #     minecraft net.minecraft.world.level.entity.LevelEntityGetterAdapter
 #     minecraft net/minecraft/world/level/entity/LevelEntityGetter.java
 #minecraft net/minecraft/world/ticks/LevelChunkTicks.java
-#minecraft net/minecraft/server/level/ChunkTaskPriorityQueue.java
+minecraft net/minecraft/server/level/ChunkTaskPriorityQueue.java
 minecraft net/minecraft/server/level/ChunkTaskPriorityQueueSorter.java
