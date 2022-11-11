@@ -5,6 +5,7 @@ import puregero.multipaper.mastermessagingprotocol.messages.serverbound.DataMess
 import puregero.multipaper.server.ChunkLockManager;
 import puregero.multipaper.server.ServerConnection;
 import puregero.multipaper.server.util.RegionFileCache;
+import puregero.multipaper.server.util.MultithreadedRegionManager;
 
 import java.io.File;
 import java.util.concurrent.CompletableFuture;
@@ -14,14 +15,15 @@ import java.util.concurrent.CompletableFuture;
  */
 public class ForceReadChunkHandler {
     public static void handle(ServerConnection connection, ForceReadChunkMessage message) {
-        ChunkLockManager.waitForLock(message.world, message.cx, message.cz, () -> {
-            RegionFileCache.getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz).thenAccept(b -> {
+//        ChunkLockManager.waitForLock(message.world, message.cx, message.cz, () -> {
+        MultithreadedRegionManager.i().getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz, b -> {
+//            RegionFileCache.getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz).thenAccept(b -> {
                 if (b == null) {
                     b = new byte[0];
                 }
                 connection.sendReply(new DataMessageReply(b), message);
             });
-        });
+//        });
     }
 
     static File getWorldDir(String world, String path) {

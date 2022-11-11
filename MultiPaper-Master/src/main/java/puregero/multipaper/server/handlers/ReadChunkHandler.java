@@ -5,6 +5,7 @@ import puregero.multipaper.mastermessagingprotocol.messages.serverbound.ChunkLoa
 import puregero.multipaper.mastermessagingprotocol.messages.serverbound.DataMessageReply;
 import puregero.multipaper.server.*;
 import puregero.multipaper.server.util.RegionFileCache;
+import puregero.multipaper.server.util.MultithreadedRegionManager;
 
 import java.io.File;
 
@@ -17,8 +18,8 @@ public class ReadChunkHandler {
     public static void handle(ServerConnection connection, ReadChunkMessage message) {
         long nano = System.nanoTime();
         if (nano - lastTimestamp > 1000000000) {
-            System.out.println("CHUNKREADS " + String.valueOf(counterLocal) + " " + String.valueOf(counter - counterLocal) + " " + String.valueOf(completed) + " " + Thread.currentThread().getName());
-            System.out.println("CHUNKLOCKS " + String.valueOf(ChunkLockManager.locks.size()));
+//            System.out.println("CHUNKREADS " + String.valueOf(counterLocal) + " " + String.valueOf(counter - counterLocal) + " " + String.valueOf(completed) + " " + Thread.currentThread().getName());
+//            System.out.println("CHUNKLOCKS " + String.valueOf(ChunkLockManager.locks.size()));
             lastTimestamp = nano;
             counter = 0;
             counterLocal = 0;
@@ -26,15 +27,23 @@ public class ReadChunkHandler {
         }
 
         counter++;
+//        System.out.println("Received packet");
 
         if (checkIfLoadedOnAnotherServer(connection, message.world, message.path, message.cx, message.cz, message)) {
             return;
         }
+//        System.out.println("Same server");
 
         counterLocal++;
-
         Runnable callback = () -> {
-            RegionFileCache.getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz).thenAccept(b -> {
+//            MultithreadedRegionManager.i().getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz);
+
+MultithreadedRegionManager.i().getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz, b -> {
+//    System.out.println("WOW, it works! " + Thread.currentThread().getName());
+
+//            RegionFileCache.getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz).thenAccept(b -> {
+//            MultithreadedRegionManager.i().getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz).thenAccept(b -> {
+
                 if (b == null) {
                     b = new byte[0];
                 }
@@ -42,14 +51,15 @@ public class ReadChunkHandler {
                 connection.sendReply(new DataMessageReply(b), message);
             });
         };
-
+/*
         if (message.path.equals("region")) {
             ChunkLockManager.waitForLock(message.world, message.cx, message.cz, callback);
         } else if (message.path.equals("entities")) {
             EntitiesLockManager.waitForLock(message.world, message.cx, message.cz, callback);
-        } else {
+        } else {*/
+//            connection.sendReply(new DataMessageReply(new byte[0]), message);
             callback.run();
-        }
+//        }
     }
 
     private static boolean checkIfLoadedOnAnotherServer(ServerConnection connection, String world, String path, int cx, int cz, ReadChunkMessage message) {
