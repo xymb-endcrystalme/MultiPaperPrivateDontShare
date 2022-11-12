@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 12 Nov 2022 11:07:06 +0100
+Subject: [PATCH] Added option to optimize spawns.
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerPlayer.java b/src/main/java/net/minecraft/server/level/ServerPlayer.java
+index 62a0fc98d60d7403a8d8bc57f7871fc52fb41af0..116d0c5e04147d528d21c517a387e92509b0a434 100644
+--- a/src/main/java/net/minecraft/server/level/ServerPlayer.java
++++ b/src/main/java/net/minecraft/server/level/ServerPlayer.java
+@@ -426,6 +426,7 @@ public class ServerPlayer extends Player {
+ 
+                 if (blockposition1 != null) {
+                     this.moveTo(blockposition1, 0.0F, 0.0F);
++                    if (puregero.multipaper.config.MultiPaperConfiguration.get().optimizations.alwaysSettleForFirstSpawn) break; // MultiPaper - optimize spawning
+                     if (world.noCollision(this, this.getBoundingBox(), true)) { // Paper - make sure this loads chunks, we default to NOT loading now
+                         break;
+                     }
+diff --git a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+index b449cf0bf1bcfab7253d8d4487dc1b847316d679..335ee4908be71b10cb9a0912ed2931a28af69601 100644
+--- a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
++++ b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+@@ -65,6 +65,7 @@ public class MultiPaperConfiguration extends ConfigurationPart {
+         public boolean fastGetHealthSkippingBukkit = false;
+         public boolean createRapidLogs = false;
+         public boolean dontGenerateStrongholds = false;
++        public boolean alwaysSettleForFirstSpawn = false;
+     }
+ 
+     public SyncSettings syncSettings;
