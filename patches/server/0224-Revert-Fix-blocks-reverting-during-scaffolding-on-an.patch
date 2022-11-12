@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 12 Nov 2022 11:47:11 +0100
+Subject: [PATCH] Revert "Fix blocks reverting during scaffolding on another
+ server."
+
+This reverts commit f5f7965f5a0aadb077919a6a1ad1d5a49fd9ef15.
+
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/PlayerActionPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/PlayerActionPacket.java
+index 9ae83713fe81e94c767ce586dec2deab8013f4cf..fd2a81936f4fb19534d165ea96f88cc6c2065b4f 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/PlayerActionPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/PlayerActionPacket.java
+@@ -21,17 +21,10 @@ public class PlayerActionPacket extends ExternalServerPacket {
+     private static final Logger LOGGER = LogManager.getLogger(PlayerActionPacket.class.getSimpleName());
+ 
+     private final UUID uuid;
+-    private final double x, y, z;
+-    private final float xRot, yRot;
+     private final Packet<ServerGamePacketListener> action;
+ 
+     public PlayerActionPacket(ServerPlayer player, Packet<ServerGamePacketListener> action) {
+         this.uuid = player.getUUID();
+-        this.x = player.getX();
+-        this.y = player.getY();
+-        this.z = player.getZ();
+-        this.xRot = player.getXRot();
+-        this.yRot = player.getYRot();
+         this.action = action;
+     }
+ 
+@@ -40,11 +33,6 @@ public class PlayerActionPacket extends ExternalServerPacket {
+ 
+         ByteBuf buf = Unpooled.wrappedBuffer(in.readByteArray());
+         FriendlyByteBuf friendlyByteBuf = new FriendlyByteBuf(buf);
+-        this.x = friendlyByteBuf.readDouble();
+-        this.y = friendlyByteBuf.readDouble();
+-        this.z = friendlyByteBuf.readDouble();
+-        this.xRot = friendlyByteBuf.readFloat();
+-        this.yRot = friendlyByteBuf.readFloat();
+         int packetId = friendlyByteBuf.readVarInt();
+         action = (Packet<ServerGamePacketListener>) ConnectionProtocol.PLAY.createPacket(PacketFlow.SERVERBOUND, packetId, friendlyByteBuf);
+     }
+@@ -57,11 +45,6 @@ public class PlayerActionPacket extends ExternalServerPacket {
+         Integer id = protocol.getPacketId(PacketFlow.SERVERBOUND, action);
+         ByteBuf buf = Unpooled.buffer();
+         FriendlyByteBuf friendlyByteBuf = new FriendlyByteBuf(buf);
+-        friendlyByteBuf.writeDouble(this.x);
+-        friendlyByteBuf.writeDouble(this.y);
+-        friendlyByteBuf.writeDouble(this.z);
+-        friendlyByteBuf.writeFloat(this.xRot);
+-        friendlyByteBuf.writeFloat(this.yRot);
+         friendlyByteBuf.writeVarInt(id);
+         action.write(friendlyByteBuf);
+         out.writeByteArray(buf.array());
+@@ -77,7 +60,6 @@ public class PlayerActionPacket extends ExternalServerPacket {
+                 return;
+             }
+ 
+-            player.absMoveTo(this.x, this.y, this.z, this.xRot, this.yRot);
+             action.handle(player.connection);
+         });
+     }
