@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 12 Nov 2022 12:24:33 +0100
+Subject: [PATCH] Make sure traders spawn only on loaded chunks.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/NaturalSpawner.java b/src/main/java/net/minecraft/world/level/NaturalSpawner.java
+index d099f8e7c2c222f7e1d7b1e27e2478a47b89e092..50b7280019347d252185b1c17b6a8bded499d4d5 100644
+--- a/src/main/java/net/minecraft/world/level/NaturalSpawner.java
++++ b/src/main/java/net/minecraft/world/level/NaturalSpawner.java
+@@ -16,6 +16,7 @@ import net.minecraft.core.Holder;
+ import net.minecraft.core.QuartPos;
+ import net.minecraft.core.Registry;
+ import net.minecraft.nbt.CompoundTag;
++import net.minecraft.server.level.ServerChunkCache;
+ import net.minecraft.server.level.ServerLevel;
+ import net.minecraft.tags.BiomeTags;
+ import net.minecraft.tags.BlockTags;
+@@ -429,6 +430,7 @@ public final class NaturalSpawner {
+     }
+ 
+     public static boolean isSpawnPositionOk(SpawnPlacements.Type location, LevelReader world, BlockPos pos, @Nullable EntityType<?> entityType) {
++        if (!world.hasChunkAt(pos)) return false; // MultiPaper
+         if (location == SpawnPlacements.Type.NO_RESTRICTIONS) {
+             return true;
+         } else if (entityType != null && world.getWorldBorder().isWithinBounds(pos)) {
