@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 12 Nov 2022 15:47:00 +0100
+Subject: [PATCH] Randomize TP packet to stop packet fly.
+
+
+diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index a0949e9275a6bdb147d4757c6881edc6f3c5fe5e..4ce04de910698f993b2e0907869273de448725e6 100644
+--- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -1827,6 +1827,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic
+         float f3 = set.contains(ClientboundPlayerPositionPacket.RelativeArgument.X_ROT) ? this.player.getXRot() : 0.0F;
+ 
+         this.awaitingPositionFromClient = new Vec3(d0, d1, d2);
++        this.awaitingTeleport += java.util.concurrent.ThreadLocalRandom.current().nextInt(1, Integer.MAX_VALUE - 2); // Xymb
+         if (++this.awaitingTeleport == Integer.MAX_VALUE) {
+             this.awaitingTeleport = 0;
+         }
