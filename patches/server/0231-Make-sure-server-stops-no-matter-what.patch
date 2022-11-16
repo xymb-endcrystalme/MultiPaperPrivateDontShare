@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Wed, 16 Nov 2022 22:35:08 +0100
+Subject: [PATCH] Make sure server stops no matter what.
+
+
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index b279fd33b96fd465d2602068c02b06ec245e5a5c..3a055c0b4e86864a6b6e65c2e20598a0295f7abf 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -44,6 +44,7 @@ import java.util.Set;
+ import java.util.concurrent.CompletableFuture;
+ import java.util.concurrent.Executor;
+ import java.util.concurrent.RejectedExecutionException;
++import java.util.concurrent.ScheduledThreadPoolExecutor;
+ import java.util.concurrent.TimeUnit;
+ import java.util.concurrent.atomic.AtomicReference;
+ import java.util.function.BooleanSupplier;
+@@ -934,6 +935,17 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         }
+ 
+         MinecraftServer.LOGGER.info("Stopping server");
++        // MultiPaper start
++        final ScheduledThreadPoolExecutor serverHangExecutor = new ScheduledThreadPoolExecutor(1);
++        serverHangExecutor.schedule(() -> {
++            MinecraftServer.LOGGER.error("Server stopping failed, killing process");
++            try {
++                Thread.sleep(100);
++            } catch (InterruptedException e) {}
++            Runtime.getRuntime().halt(1);
++            MinecraftServer.LOGGER.error("Dead?");
++        }, 60, TimeUnit.SECONDS);
++        // MultiPaper end
+         Commands.COMMAND_SENDING_POOL.shutdownNow(); // Paper - Shutdown and don't bother finishing
+         MinecraftTimings.stopServer(); // Paper
+         // CraftBukkit start
