@@ -10,22 +10,6 @@ import puregero.multipaper.server.util.MultithreadedRegionManager;
 
 public class WriteChunkHandler {
     public static void handle(ServerConnection connection, WriteChunkMessage message) {
-//        connection.sendReply(new BooleanMessageReply(true), message);
-
-        MultithreadedRegionManager.putChunkDeflatedDataAsync(ReadChunkHandler.getWorldDir(message.world, message.path), message.cx, message.cz, message.data);
-//        RegionFileCache.putChunkDeflatedDataAsync(ReadChunkHandler.getWorldDir(message.world, message.path), message.cx, message.cz, message.data).thenRun(() -> {
-    /*
-        MultithreadedRegionManager.i().putChunkDeflatedDataAsync(ReadChunkHandler.getWorldDir(message.world, message.path), message.cx, message.cz, message.data).thenRun(() -> {
-            if (message.path.equals("region")) {
-                ChunkLockManager.writtenChunk(message.world, message.cx, message.cz);
-            }
-
-            if (message.path.equals("entities")) {
-                EntitiesLockManager.writtenChunk(message.world, message.cx, message.cz);
-            }
-
-            connection.sendReply(new BooleanMessageReply(true), message);
-        });
-        */
+        MultithreadedRegionManager.putChunkDataAsync(ReadChunkHandler.getWorldDir(message.world, message.path), message);
     }
 }

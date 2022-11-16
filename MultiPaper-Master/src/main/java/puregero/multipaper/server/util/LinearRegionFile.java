@@ -6,11 +6,12 @@ import java.nio.file.*;
 import java.util.zip.*;
 import java.util.ArrayList;
 
+import puregero.multipaper.mastermessagingprotocol.messages.serverbound.DataMessageReply;
+import puregero.multipaper.mastermessagingprotocol.messages.masterbound.WriteChunkMessage;
+
+import com.github.luben.zstd.Zstd;
 import com.github.luben.zstd.ZstdOutputStream;
 import com.github.luben.zstd.ZstdInputStream;
-import net.jpountz.lz4.LZ4Factory;
-import net.jpountz.lz4.LZ4Compressor;
-import net.jpountz.lz4.LZ4FastDecompressor;
 import net.jpountz.xxhash.XXHashFactory;
 
 public class LinearRegionFile {
@@ -22,19 +23,15 @@ public class LinearRegionFile {
     private final long SAVE_FORCE_INTERVAL = 10 * 1000000000;
 
     public boolean beingSaved = false;
-    public long lastAccess = 0;
+    public long lastAccess = System.nanoTime();
     public String regionFileString;
 
-    final byte COMPRESSION_LEVEL = -1;
-    final boolean INTERNAL_LZ4_COMPRESSION = Integer.getInteger("linear.regionfile.compression", 1) != 0;
+    final byte COMPRESSION_LEVEL = 1;
 
     public LinearRegionFile(String regionFileString) {
         this.regionFileString = regionFileString;
         this.regionFile = new File(regionFileString);
         this.lastUpdate = System.nanoTime();
-
-        LZ4Compressor compressor = LZ4Factory.fastestInstance().fastCompressor();
-        LZ4FastDecompressor decompressor = LZ4Factory.fastestInstance().fastDecompressor();
 
         for (int i = 0 ; i < 32 * 32 ; i++)
             this.bufferUncompressedSize[i] = 0;
@@ -110,22 +107,21 @@ public class LinearRegionFile {
                         byte b[] = new byte[size];
                         dataStream.readFully(b, 0, size);
 
-                        if (INTERNAL_LZ4_COMPRESSION) {
-                            int maxCompressedLength = compressor.maxCompressedLength(size);
-                            byte[] compressed = new byte[maxCompressedLength];
-                            int compressedLength = compressor.compress(b, 0, size, compressed, 0, maxCompressedLength);
-                            b = new byte[compressedLength];
-                            for(int j = 0 ; j < compressedLength ; j++)
-                                b[j] = compressed[j];
-                        }
+                        byte[] compressed = new byte[(int)Zstd.compressBound(b.length)];
+                        long compressedLength = Zstd.compress(compressed, b, COMPRESSION_LEVEL, false);
+                        b = new byte[(int)compressedLength];
+                        for(int j = 0 ; j < compressedLength ; j++)
+                            b[j] = compressed[j];
 
                         this.buffer[i] = b;
                         this.bufferUncompressedSize[i] = size;
                     }
                 }
-                System.out.println("Region load " + this.regionFile.toString() + " " + String.valueOf(System.nanoTime() - start));
+                System.out.println("Region load " + this.regionFile.toString() + " " + ((System.nanoTime() - start) / 1000000.));
+                System.out.println("MEMORY " + String.valueOf(Runtime.getRuntime().totalMemory()) + "    " + String.valueOf(Runtime.getRuntime().freeMemory()));
             }
         } catch (IOException ex) {
+            ex.printStackTrace();
             System.out.println("Region file corrupted! " + this.regionFile);
             // TODO: Move to temp file and regenerate
         }
@@ -135,24 +131,12 @@ public class LinearRegionFile {
         return (x & 31) + (z & 31) * 32;
     }
 
-    public byte[] getDeflatedBytes(int x, int z) {
+    public DataMessageReply getChunkPacket(int x, int z) {
         lastAccess = System.nanoTime();
-        if(this.bufferUncompressedSize[getChunkIndex(x, z)] != 0) {
-            LZ4FastDecompressor decompressor = LZ4Factory.fastestInstance().fastDecompressor();
-            try {
-                if (INTERNAL_LZ4_COMPRESSION) {
-                    byte[] content = new byte[bufferUncompressedSize[getChunkIndex(x, z)]];
-                    decompressor.decompress(this.buffer[getChunkIndex(x, z)], 0, content, 0, bufferUncompressedSize[getChunkIndex(x, z)]);
-                    return toByteArray(new DeflaterInputStream(new ByteArrayInputStream(content), new Deflater(Deflater.NO_COMPRESSION)));
-                } else {
-                    return toByteArray(new DeflaterInputStream(new ByteArrayInputStream(this.buffer[getChunkIndex(x, z)]), new Deflater(Deflater.NO_COMPRESSION)));
-                }
-            } catch (IOException e) {
-                System.out.println("GetDeflatedBytes exception " + e.toString() + " " + this.regionFile);
-                return null;
-            }
+        if (this.bufferUncompressedSize[getChunkIndex(x, z)] != 0) {
+            return new DataMessageReply(this.buffer[getChunkIndex(x, z)], DataMessageReply.COMPRESSION_ZSTD);
         }
-        return null;
+        return new DataMessageReply(new byte[0]);
     }
 
     private byte[] toByteArray(InputStream in) throws IOException {
@@ -167,28 +151,55 @@ public class LinearRegionFile {
         return out.toByteArray();
     }
 
-    public void putDeflatedBytes(int x, int z, byte[] b) {
-        LZ4Compressor compressor = LZ4Factory.fastestInstance().fastCompressor();
+    public void putChunkPacket(WriteChunkMessage chunk) {
+        lastAccess = System.nanoTime();
+        if (chunk.compressionType == WriteChunkMessage.COMPRESSION_DEFLATE) {
+            this.putDeflatedBytes(chunk.cx, chunk.cz, chunk.data);
+        } else if (chunk.compressionType == WriteChunkMessage.COMPRESSION_ZSTD) {
+            this.putZstdBytes(chunk.cx, chunk.cz, chunk.data, chunk.uncompressedSize);
+        } else {
+            System.out.println("Unknown compression!");
+        }
+    }
+
+    private void putZstdBytes(int x, int z, byte[] b, int uncompressedSize) {
+        if (b.length != 0) {
+            synchronized (this.bufferUncompressedSize) {
+                this.buffer[getChunkIndex(x, z)] = b;
+                this.bufferUncompressedSize[getChunkIndex(x, z)] = uncompressedSize;
+            }
+        } else {
+            synchronized (this.bufferUncompressedSize) {
+                this.buffer[getChunkIndex(x, z)] = null;
+                this.bufferUncompressedSize[getChunkIndex(x, z)] = 0;
+            }
+        }
+        this.lastUpdate = System.nanoTime();
+        this.requiresSaving = true;
+    }
+
+    private void putDeflatedBytes(int x, int z, byte[] b) {
         try {
             if (b.length != 0) {
                 b = toByteArray(new InflaterInputStream(new ByteArrayInputStream(b)));
 
                 int uncompressedSize = b.length;
 
-                if (INTERNAL_LZ4_COMPRESSION) {
-                    int maxCompressedLength = compressor.maxCompressedLength(b.length);
-                    byte[] compressed = new byte[maxCompressedLength];
-                    int compressedLength = compressor.compress(b, 0, b.length, compressed, 0, maxCompressedLength);
-                    b = new byte[compressedLength];
-                    for(int j = 0 ; j < compressedLength ; j++)
-                        b[j] = compressed[j];
-                }
+                byte[] compressed = new byte[(int)Zstd.compressBound(b.length)];
+                long compressedLength = Zstd.compress(compressed, b, COMPRESSION_LEVEL, false);
+                b = new byte[(int)compressedLength];
+                for(int j = 0 ; j < compressedLength ; j++)
+                    b[j] = compressed[j];
 
-                this.buffer[getChunkIndex(x, z)] = b;
-                this.bufferUncompressedSize[getChunkIndex(x, z)] = uncompressedSize;
+                synchronized (this.bufferUncompressedSize) {
+                    this.buffer[getChunkIndex(x, z)] = b;
+                    this.bufferUncompressedSize[getChunkIndex(x, z)] = uncompressedSize;
+                }
             } else {
-                this.buffer[getChunkIndex(x, z)] = null;
-                this.bufferUncompressedSize[getChunkIndex(x, z)] = 0;
+                synchronized (this.bufferUncompressedSize) {
+                    this.buffer[getChunkIndex(x, z)] = null;
+                    this.bufferUncompressedSize[getChunkIndex(x, z)] = 0;
+                }
             }
         } catch (IOException e) {
             System.out.println("PutDeflatedBytes exception " + e.toString() + " " + this.regionFile);
@@ -201,6 +212,15 @@ public class LinearRegionFile {
         if (!this.requiresSaving) return;
         this.requiresSaving = false;
 
+        int[] localBufferUncompressedSize = new int[32*32];
+        byte[][] localBuffer = new byte[32*32][];
+        synchronized (this.bufferUncompressedSize) {
+            for (int i = 0 ; i < 32 * 32 ; i++) {
+                localBufferUncompressedSize[i] = this.bufferUncompressedSize[i];
+                localBuffer[i] = this.buffer[i];
+            }
+        }
+
         long start = System.nanoTime();
 
         long SUPERBLOCK = -4323716122432332390L;
@@ -209,6 +229,7 @@ public class LinearRegionFile {
         short chunkCount = 0;
 
         File tempFile = new File(regionFile.toString() + ".tmp");
+        Files.createDirectories(tempFile.toPath().getParent());
         FileOutputStream fileStream = new FileOutputStream(tempFile);
 
         ByteArrayOutputStream zstdByteArray = new ByteArrayOutputStream();
@@ -222,31 +243,22 @@ public class LinearRegionFile {
         dataStream.writeLong(timestamp);
         dataStream.writeByte(COMPRESSION_LEVEL);
 
-        int region_total = 0;
-        int region_raw = 0;
-
-        LZ4FastDecompressor decompressor = LZ4Factory.fastestInstance().fastDecompressor();
+        boolean saveRegion = false;
 
         ArrayList<byte[]> byteBuffers = new ArrayList<byte[]>();
         for(int i = 0 ; i < 32 * 32 ; i++) {
-            if(this.bufferUncompressedSize[i] != 0) {
-                chunkCount += 1;
-                long compStart = System.nanoTime();
-                byte[] content = new byte[bufferUncompressedSize[i]];
-                if (INTERNAL_LZ4_COMPRESSION) {
-                    decompressor.decompress(buffer[i], 0, content, 0, bufferUncompressedSize[i]);
-                } else {
-                    content = buffer[i];
-                }
-
-                region_total += buffer[i].length;
-                region_raw += content.length;
-
+            if(localBufferUncompressedSize[i] != 0) {
+                saveRegion = true;
+                chunkCount += 1;// TODO: localBuffer
+                byte[] content = new byte[localBufferUncompressedSize[i]];
+                long decompressedLength = Zstd.decompress(content, localBuffer[i]);
+                if (decompressedLength != localBufferUncompressedSize[i])
+                    throw new IOException("Buffer size invalid - " + decompressedLength + " vs " + localBufferUncompressedSize[i]);
                 byteBuffers.add(content);
             } else byteBuffers.add(null);
         }
         for(int i = 0 ; i < 32 * 32 ; i++) {
-            zstdDataStream.writeInt(this.bufferUncompressedSize[i]);
+            zstdDataStream.writeInt(localBufferUncompressedSize[i]);
             zstdDataStream.writeInt(0);
         }
         for(int i = 0 ; i < 32 * 32 ; i++) {
@@ -260,7 +272,7 @@ public class LinearRegionFile {
         byte[] compressed = zstdByteArray.toByteArray();
 
         dataStream.writeInt(compressed.length);
-        dataStream.writeLong(XXHashFactory.fastestInstance().hash64().hash(compressed, 0, compressed.length, 0)); // TODO: Hash the contents, not the whole thing
+        dataStream.writeLong(XXHashFactory.fastestInstance().hash64().hash(compressed, 0, compressed.length, 0));
 
         dataStream.write(compressed, 0, compressed.length);
         dataStream.writeLong(SUPERBLOCK);
@@ -270,13 +282,13 @@ public class LinearRegionFile {
         fileStream.close();
         Files.move(tempFile.toPath(), regionFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-        if(region_raw != 0) {
-            System.out.println("Region file flush " + String.valueOf(System.nanoTime() - start) + " compression " + String.valueOf(100 * region_total / region_raw) + "%");
+        if(saveRegion) {
+            System.out.println("Region file flush " + regionFileString + " " + (System.nanoTime() - start) / 1000000.);
             System.out.println("MEMORY " + String.valueOf(Runtime.getRuntime().totalMemory()) + "    " + String.valueOf(Runtime.getRuntime().freeMemory()));
         }
     }
 
-    boolean requiresSaving(int saveDelaySeconds) {
-        return requiresSaving && (System.nanoTime() - lastUpdate) / 1000000000 >= saveDelaySeconds;
+    boolean requiresSaving(int saveDelaySeconds, boolean saveEverythingImmediately) {
+        return requiresSaving && ((System.nanoTime() - lastUpdate) / 1000000000 >= saveDelaySeconds || saveEverythingImmediately);
     }
 }

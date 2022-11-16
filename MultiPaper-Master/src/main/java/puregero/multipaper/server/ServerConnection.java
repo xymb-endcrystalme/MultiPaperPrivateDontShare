@@ -125,7 +125,7 @@ public class ServerConnection extends MasterBoundMessageHandler {
 
         System.out.println("Connection from " + getAddress() + " (" + name + ")");
 
-        send(new SetSecretMessage(MultiPaperServer.SECRET));
+        send(new SetSecretMessage(MultiPaperServer.SECRET, SetSecretMessage.COMPRESSION_ZSTD));
     }
 
     @Override

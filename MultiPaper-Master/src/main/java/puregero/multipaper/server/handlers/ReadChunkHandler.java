@@ -27,39 +27,16 @@ public class ReadChunkHandler {
         }
 
         counter++;
-//        System.out.println("Received packet");
 
         if (checkIfLoadedOnAnotherServer(connection, message.world, message.path, message.cx, message.cz, message)) {
             return;
         }
-//        System.out.println("Same server");
 
         counterLocal++;
-        Runnable callback = () -> {
-//            MultithreadedRegionManager.i().getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz);
-
-MultithreadedRegionManager.i().getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz, b -> {
-//    System.out.println("WOW, it works! " + Thread.currentThread().getName());
-
-//            RegionFileCache.getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz).thenAccept(b -> {
-//            MultithreadedRegionManager.i().getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz).thenAccept(b -> {
-
-                if (b == null) {
-                    b = new byte[0];
-                }
-                completed++;
-                connection.sendReply(new DataMessageReply(b), message);
-            });
-        };
-/*
-        if (message.path.equals("region")) {
-            ChunkLockManager.waitForLock(message.world, message.cx, message.cz, callback);
-        } else if (message.path.equals("entities")) {
-            EntitiesLockManager.waitForLock(message.world, message.cx, message.cz, callback);
-        } else {*/
-//            connection.sendReply(new DataMessageReply(new byte[0]), message);
-            callback.run();
-//        }
+        MultithreadedRegionManager.i().getChunkDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz, b -> {
+            completed++;
+            connection.sendReply(b, message);
+        });
     }
 
     private static boolean checkIfLoadedOnAnotherServer(ServerConnection connection, String world, String path, int cx, int cz, ReadChunkMessage message) {

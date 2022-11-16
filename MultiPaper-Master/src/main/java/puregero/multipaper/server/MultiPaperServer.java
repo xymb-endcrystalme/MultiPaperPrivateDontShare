@@ -16,6 +16,11 @@ public class MultiPaperServer extends MessageBootstrap<MasterBoundMessage, Serve
     public static final String SECRET = UUID.randomUUID().toString();
 
     public static void main(String[] args) throws IOException {
+        if (Boolean.getBoolean("multipaper.testing")) {
+            var testing = new puregero.multipaper.testing.MultiPaperTestingClient();
+            testing.main(args);
+            return;
+        }
         DAEMON = false;
 
         String address = null;

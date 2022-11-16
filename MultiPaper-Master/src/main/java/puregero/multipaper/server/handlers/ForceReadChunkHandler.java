@@ -15,15 +15,9 @@ import java.util.concurrent.CompletableFuture;
  */
 public class ForceReadChunkHandler {
     public static void handle(ServerConnection connection, ForceReadChunkMessage message) {
-//        ChunkLockManager.waitForLock(message.world, message.cx, message.cz, () -> {
-        MultithreadedRegionManager.i().getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz, b -> {
-//            RegionFileCache.getChunkDeflatedDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz).thenAccept(b -> {
-                if (b == null) {
-                    b = new byte[0];
-                }
-                connection.sendReply(new DataMessageReply(b), message);
-            });
-//        });
+        MultithreadedRegionManager.i().getChunkDataAsync(getWorldDir(message.world, message.path), message.cx, message.cz, b -> {
+                connection.sendReply(b, message);
+        });
     }
 
     static File getWorldDir(String world, String path) {

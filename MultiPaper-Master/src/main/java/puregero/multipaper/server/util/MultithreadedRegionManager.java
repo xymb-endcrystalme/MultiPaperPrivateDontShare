@@ -6,22 +6,24 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 
+import puregero.multipaper.mastermessagingprotocol.messages.masterbound.WriteChunkMessage;
+import puregero.multipaper.mastermessagingprotocol.messages.serverbound.DataMessageReply;
+
 public class MultithreadedRegionManager extends Thread {
     private static MultithreadedRegionManager single_instance = null;
     private final int THREADS = Integer.getInteger("regionfile.worker.threads", Runtime.getRuntime().availableProcessors());
-    private List<Thread> threads;
+    private static List<Thread> threads;
     private Thread regionFileNotifierThread;
 
     private static class GetChunkRequest {
-        Consumer<byte[]> callback;
+        Consumer<DataMessageReply> callback;
         File basePath;
         int chunkX, chunkZ;
     }
 
     private static class PutChunkRequest {
-        byte[] data;
         File basePath;
-        int chunkX, chunkZ;
+        WriteChunkMessage message;
     }
 
     private static class ChunkRequestWrapper {
@@ -32,27 +34,28 @@ public class MultithreadedRegionManager extends Thread {
     }
 
     private static final LinkedHashMap<String, ChunkRequestWrapper> chunkRequests = new LinkedHashMap<>();
-//    private static final HashSet<String> loadingRegionFiles = new HashSet<>();
     private static final ConcurrentHashMap<String, LinearRegionFile> cache = new ConcurrentHashMap<>();
 
     private static final int SOFT_MAX_CACHE_SIZE = Integer.getInteger("max.regionfile.cache.size", 256);
-//    private static final int HASTE_MAX_CACHE_SIZE = (int)(SOFT_MAX_CACHE_SIZE * 1.1);
-//    private static final int HARD_MAX_CACHE_SIZE = (int)(SOFT_MAX_CACHE_SIZE * 1.2);
     private static final int REGION_SAVE_DELAY = Integer.getInteger("regionfile.save.delay", 30);
     private static final Object lock = new Object();
     private static long lastNotify = 0;
+    private static boolean saveEverythingImmediately = false;
 
     static class RegionFileNotifier extends Thread {
         public void run() {
             System.out.println("Starting thread " + Thread.currentThread().getName());
-            final long INTERVAL = 2000000000; // 2s
+            final long INTERVAL = 1000000000; // 1s
             long lastTick = System.nanoTime();
             while (true) {
+                boolean somethingRequiresSaving = false;
                 for (LinearRegionFile regionFile: cache.values()) {
-                    if (regionFile.requiresSaving(REGION_SAVE_DELAY))
+                    if (regionFile.requiresSaving(REGION_SAVE_DELAY, saveEverythingImmediately)) {
                         notifyLock();
+                        somethingRequiresSaving = true;
+                    }
                 }
-                
+
                 long newTick = System.nanoTime();
                 long timeToSleep = (lastTick + INTERVAL - newTick) / 1000000;
                 if (timeToSleep > 0)
@@ -150,8 +153,8 @@ public class MultithreadedRegionManager extends Thread {
                 while (it.hasNext()) {
                     GetChunkRequest request = (GetChunkRequest)it.next();
                     it.remove();
-                    if (regionFile == null) request.callback.accept(new byte[0]);
-                    else request.callback.accept(regionFile.getDeflatedBytes(request.chunkX, request.chunkZ));
+                    if (regionFile == null) request.callback.accept(new DataMessageReply(new byte[0]));
+                    else request.callback.accept(regionFile.getChunkPacket(request.chunkX, request.chunkZ));
                     count++;
                 }
                 boolean flush = false;
@@ -163,7 +166,7 @@ public class MultithreadedRegionManager extends Thread {
                 while (it.hasNext()) {
                     PutChunkRequest request = (PutChunkRequest)it.next();
                     it.remove();
-                    regionFile.putDeflatedBytes(request.chunkX, request.chunkZ, request.data);
+                    regionFile.putChunkPacket(request.message);
                 }
                 if (flush) {
                     try {
@@ -177,8 +180,9 @@ public class MultithreadedRegionManager extends Thread {
                     if (wrapper.getChunkRequests.isEmpty() && wrapper.putChunkRequests.isEmpty()) chunkRequests.remove(wrapper.fullPath);
                 }
             }
+            boolean flushed = false;
             for (LinearRegionFile regionFile: cache.values()) {
-                if (regionFile.requiresSaving(REGION_SAVE_DELAY)) {
+                if (regionFile.requiresSaving(REGION_SAVE_DELAY, saveEverythingImmediately)) {
                     boolean areWeSavingIt = false;
                     synchronized (regionFile) {
                         if (!regionFile.beingSaved) {
@@ -190,6 +194,7 @@ public class MultithreadedRegionManager extends Thread {
                     if (areWeSavingIt) {
                         try {regionFile.flush();} catch (IOException ex) {ex.printStackTrace();}
                         regionFile.beingSaved = false;
+                        flushed = true;
                     }
                 }
             }
@@ -215,12 +220,16 @@ public class MultithreadedRegionManager extends Thread {
                         try {regionFileToRemove.flush();} catch (IOException ex) {ex.printStackTrace();}
                         synchronized (chunkRequests) {
                             if (!chunkRequests.containsKey(regionFileToRemove.regionFileString)) {
-                                System.out.println("Removing! " + regionFileToRemove.regionFileString);
+                                System.out.println("Removing " + regionFileToRemove.regionFileString);
                                 cache.remove(regionFileToRemove.regionFileString);
                             }
                         }
+                        regionFileToRemove.beingSaved = false;
                     }
                 }
+            }
+            if (saveEverythingImmediately && !flushed) {
+                return;
             }
         }
     }
@@ -229,19 +238,17 @@ public class MultithreadedRegionManager extends Thread {
         return new File(regionDir, "r." + (chunkX >> 5) + "." + (chunkZ >> 5) + ".linear").toString();
     }
 
-    public static void putChunkDeflatedDataAsync(File basePath, int chunkX, int chunkZ, byte[] data) {
-        String regionFile = getFileForRegionFile(basePath, chunkX, chunkZ);
+    public static void putChunkDataAsync(File basePath, WriteChunkMessage message) {
+        String regionFile = getFileForRegionFile(basePath, message.cx, message.cz);
 
         PutChunkRequest putChunkRequest = new PutChunkRequest();
         putChunkRequest.basePath = basePath;
-        putChunkRequest.chunkX = chunkX;
-        putChunkRequest.chunkZ = chunkZ;
-        putChunkRequest.data = data;
+        putChunkRequest.message = message;
 
         synchronized (chunkRequests) {
             if (!chunkRequests.containsKey(regionFile)) {
                 ChunkRequestWrapper wrapper = new ChunkRequestWrapper();
-                wrapper.fullPath = getFileForRegionFile(basePath, chunkX, chunkZ);
+                wrapper.fullPath = getFileForRegionFile(basePath, message.cx, message.cz);
                 chunkRequests.put(regionFile, wrapper);
             }
             chunkRequests.get(regionFile).putChunkRequests.addLast(putChunkRequest);
@@ -249,7 +256,7 @@ public class MultithreadedRegionManager extends Thread {
         notifyLock();
     }
 
-    public static void getChunkDeflatedDataAsync(File basePath, int chunkX, int chunkZ, Consumer<byte[]> callback) {
+    public static void getChunkDataAsync(File basePath, int chunkX, int chunkZ, Consumer<DataMessageReply> callback) {
         String regionFile = getFileForRegionFile(basePath, chunkX, chunkZ);
 
         GetChunkRequest getChunkRequest = new GetChunkRequest();
@@ -268,5 +275,12 @@ public class MultithreadedRegionManager extends Thread {
         }
         notifyLock();
     }
-    
+
+    public static void saveEverything() {
+        saveEverythingImmediately = true;
+        notifyLock();
+        try {
+            for (Thread thread: threads) thread.join();
+        } catch (InterruptedException ex) {}
+    }
 }
