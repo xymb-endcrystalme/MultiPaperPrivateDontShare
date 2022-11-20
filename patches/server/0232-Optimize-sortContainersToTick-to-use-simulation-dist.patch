@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sun, 20 Nov 2022 23:41:10 +0100
+Subject: [PATCH] Optimize sortContainersToTick to use simulation distance, not
+ render distance.
+
+
+diff --git a/src/main/java/net/minecraft/server/ChunkSystem.java b/src/main/java/net/minecraft/server/ChunkSystem.java
+index 81ea64443a843736f9ada97900d173c302e39ba0..0740a3459f23884265f13b3589a781888bef2d59 100644
+--- a/src/main/java/net/minecraft/server/ChunkSystem.java
++++ b/src/main/java/net/minecraft/server/ChunkSystem.java
+@@ -290,10 +290,12 @@ public final class ChunkSystem {
+     }
+ 
+     public static void onChunkTicking(LevelChunk chunk, ChunkHolder holder) {
++        chunk.level.getChunkSource().tickingChunksLongs.add(chunk.getPos().toLong());
+         chunk.level.getChunkSource().tickingChunks.add(chunk);
+     }
+ 
+     public static void onChunkNotTicking(LevelChunk chunk, ChunkHolder holder) {
++        chunk.level.getChunkSource().tickingChunksLongs.remove(chunk.getPos().toLong());
+         chunk.level.getChunkSource().tickingChunks.remove(chunk);
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index 10e004b69bcce5ccd9db6a1a9307dfb7e9d4ca7b..f51d2c42c1d204f23194f631a217ed0029ff38cf 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -47,6 +47,7 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
+ import net.minecraft.world.level.storage.DimensionDataStorage;
+ import net.minecraft.world.level.storage.LevelData;
+ import net.minecraft.world.level.storage.LevelStorageSource;
++import it.unimi.dsi.fastutil.longs.LongOpenHashSet; // MultiPaper
+ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet; // Paper
+ import puregero.multipaper.MultiPaper;
+ 
+@@ -299,6 +300,7 @@ public class ServerChunkCache extends ChunkSource {
+         this.distanceManager.removeTicket(ticketType, chunkPos, ticketLevel, identifier);
+     }
+ 
++    public final LongOpenHashSet tickingChunksLongs = new LongOpenHashSet(); // MultiPaper
+     public final io.papermc.paper.util.maplist.IteratorSafeOrderedReferenceSet<LevelChunk> tickingChunks = new io.papermc.paper.util.maplist.IteratorSafeOrderedReferenceSet<>(4096, 0.75f, 4096, 0.15, true);
+     public final io.papermc.paper.util.maplist.IteratorSafeOrderedReferenceSet<LevelChunk> entityTickingChunks = new io.papermc.paper.util.maplist.IteratorSafeOrderedReferenceSet<>(4096, 0.75f, 4096, 0.15, true);
+     // Paper end
+diff --git a/src/main/java/net/minecraft/world/ticks/LevelTicks.java b/src/main/java/net/minecraft/world/ticks/LevelTicks.java
+index 0fece09fcc4308f4c230134b07f270df281d4a6e..a84eae41e547e0de18aaab4dc67b55a9a90fb58f 100644
+--- a/src/main/java/net/minecraft/world/ticks/LevelTicks.java
++++ b/src/main/java/net/minecraft/world/ticks/LevelTicks.java
+@@ -125,6 +125,7 @@ public class LevelTicks<T> implements LevelTickAccess<T> {
+             Long2LongMap.Entry entry = objectIterator.next();
+             long l = entry.getLongKey();
+             long m = entry.getLongValue();
++            if (!this.level.getChunkSource().tickingChunksLongs.contains(l)) continue; // MultiPaper
+             if (m <= time) {
+                 LevelChunkTicks<T> levelChunkTicks = this.allContainers.get(l);
+                 if (levelChunkTicks == null) {
