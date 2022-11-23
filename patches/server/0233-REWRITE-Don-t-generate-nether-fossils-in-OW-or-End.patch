@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Wed, 23 Nov 2022 20:19:32 +0100
+Subject: [PATCH] REWRITE! Don't generate nether fossils in OW or End.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/levelgen/structure/structures/NetherFossilStructure.java b/src/main/java/net/minecraft/world/level/levelgen/structure/structures/NetherFossilStructure.java
+index 9ec3ab2b681fffba022c66412f8619c1bdf1780a..473637ed3ec50c50f76b1421d784cda646946096 100644
+--- a/src/main/java/net/minecraft/world/level/levelgen/structure/structures/NetherFossilStructure.java
++++ b/src/main/java/net/minecraft/world/level/levelgen/structure/structures/NetherFossilStructure.java
+@@ -34,6 +34,7 @@ public class NetherFossilStructure extends Structure {
+         int i = context.chunkPos().getMinBlockX() + worldgenRandom.nextInt(16);
+         int j = context.chunkPos().getMinBlockZ() + worldgenRandom.nextInt(16);
+         int k = context.chunkGenerator().getSeaLevel();
++        if (k != 32) return Optional.empty(); // Xymb - Yes, a shit patch - don't generate NetherFossils in OW or End
+         WorldGenerationContext worldGenerationContext = new WorldGenerationContext(context.chunkGenerator(), context.heightAccessor());
+         int l = this.height.sample(worldgenRandom, worldGenerationContext);
+         NoiseColumn noiseColumn = context.chunkGenerator().getBaseColumn(i, j, context.heightAccessor(), context.randomState());
