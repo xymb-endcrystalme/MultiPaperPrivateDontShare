@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 28 Nov 2022 01:24:01 +0100
+Subject: [PATCH] Don't ask to executeMidTickTasks so often.
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index f51d2c42c1d204f23194f631a217ed0029ff38cf..50b34075c5ff312ffc5b7dc146c35651b851dbc9 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -917,7 +917,7 @@ public class ServerChunkCache extends ChunkSource {
+ 
+                     if (true || this.level.shouldTickBlocksAt(chunkcoordintpair.toLong())) { // Paper - replace player chunk loader system
+                         this.level.tickChunk(chunk1, k);
+-                        if ((chunksTicked++ & 1) == 0) net.minecraft.server.MinecraftServer.getServer().executeMidTickTasks(); // Paper
++                        if ((chunksTicked++ & 15) == 0) net.minecraft.server.MinecraftServer.getServer().executeMidTickTasks(); // Paper
+                     }
+                 }
+                 // Paper start - optimise chunk tick iteration
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index bab4f4423538fc0f3b176b2cfb8336f6c58131fc..2067e943975eaf6ab6bdfc10a75ce9c0933112f2 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -1208,7 +1208,7 @@ public class ServerLevel extends Level implements WorldGenLevel {
+         if (fluid1.is(fluid)) {
+             fluid1.tick(this, pos);
+         }
+-        MinecraftServer.getServer().executeMidTickTasks(); // Paper - exec chunk tasks during world tick
++        //MinecraftServer.getServer().executeMidTickTasks(); // Paper - exec chunk tasks during world tick
+ 
+     }
+ 
+@@ -1218,7 +1218,7 @@ public class ServerLevel extends Level implements WorldGenLevel {
+         if (iblockdata.is(block)) {
+             iblockdata.tick(this, pos, this.random);
+         }
+-        MinecraftServer.getServer().executeMidTickTasks(); // Paper - exec chunk tasks during world tick
++        //MinecraftServer.getServer().executeMidTickTasks(); // Paper - exec chunk tasks during world tick
+ 
+     }
+ 
+diff --git a/src/main/java/net/minecraft/world/level/Level.java b/src/main/java/net/minecraft/world/level/Level.java
+index 48f1df5e9334d430fd46c08670a1824c2f88c13e..f245413e3eaa7356667420664775b2cd29aa7bb6 100644
+--- a/src/main/java/net/minecraft/world/level/Level.java
++++ b/src/main/java/net/minecraft/world/level/Level.java
+@@ -987,7 +987,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+             } else if (MultiPaperChunkHandler.shouldTick(this, tickingblockentity.getPos()) && this.shouldTickBlocksAt(tickingblockentity.getPos())) { // MultiPaper - should tick
+                 tickingblockentity.tick();
+                 // Paper start - execute chunk tasks during tick
+-                if ((this.tileTickPosition & 7) == 0) {
++                if ((this.tileTickPosition & 127) == 0) {
+                     MinecraftServer.getServer().executeMidTickTasks();
+                 }
+                 // Paper end - execute chunk tasks during tick
