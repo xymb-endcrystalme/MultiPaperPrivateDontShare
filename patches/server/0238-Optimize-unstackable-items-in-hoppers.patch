@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 28 Nov 2022 00:25:17 +0100
+Subject: [PATCH] Optimize unstackable items in hoppers.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index 869ee544b01668f1cfe37a003b4759fcbd3a7874..c994501917f2b42962e011dfb1d058dad89e511a 100644
+--- a/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -751,6 +751,7 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+     }
+ 
+     private static boolean canMergeItems(ItemStack first, ItemStack second) {
++        if (!first.isStackable() || !second.isStackable()) return false; // MultiPaper
+         return !first.is(second.getItem()) ? false : (first.getDamageValue() != second.getDamageValue() ? false : (first.getCount() > first.getMaxStackSize() ? false : ItemStack.tagMatches(first, second)));
+     }
+ 

@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 28 Nov 2022 00:03:14 +0100
+Subject: [PATCH] Optimize MultiPaperChunkHandler.shouldTick.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/Level.java b/src/main/java/net/minecraft/world/level/Level.java
+index 48f1df5e9334d430fd46c08670a1824c2f88c13e..e4807860d99aeacbba2f7049090a95ae3bb4c5a7 100644
+--- a/src/main/java/net/minecraft/world/level/Level.java
++++ b/src/main/java/net/minecraft/world/level/Level.java
+@@ -962,6 +962,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+         }
+         timings.tileEntityPending.stopTiming(); // Spigot
+ 
++        MultiPaperChunkHandler.RapidShouldTick rapidShouldTick = new MultiPaperChunkHandler.RapidShouldTick(); // MultiPaper
+         timings.tileEntityTick.startTiming(); // Spigot
+         // Spigot start
+         // Iterator iterator = this.blockEntityTickers.iterator();
+@@ -984,7 +985,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+                 tilesThisCycle--;
+                 toRemove.add(tickingblockentity); // Paper - use removeAll
+                 // Spigot end
+-            } else if (MultiPaperChunkHandler.shouldTick(this, tickingblockentity.getPos()) && this.shouldTickBlocksAt(tickingblockentity.getPos())) { // MultiPaper - should tick
++            } else if (rapidShouldTick.shouldTick(this, tickingblockentity.getPos()) && this.shouldTickBlocksAt(tickingblockentity.getPos())) { // MultiPaper - should tick
+                 tickingblockentity.tick();
+                 // Paper start - execute chunk tasks during tick
+                 if ((this.tileTickPosition & 7) == 0) {
+diff --git a/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java b/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java
+index 53b29b38c607c89d20b289a628503b337f768696..99b7264686793ee5af8797c8c3d7dc0e6e6f0e8d 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java
++++ b/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java
+@@ -28,6 +28,7 @@ import puregero.multipaper.mastermessagingprotocol.messages.masterbound.Subscrib
+ import puregero.multipaper.mastermessagingprotocol.messages.masterbound.UnsubscribeChunkMessage;
+ import puregero.multipaper.mastermessagingprotocol.messages.serverbound.BooleanMessageReply;
+ 
++import it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap;
+ import javax.annotation.Nullable;
+ import java.util.BitSet;
+ import java.util.HashSet;
+@@ -43,6 +44,20 @@ public class MultiPaperChunkHandler {
+         return MultiPaper.isChunkLocal(chunk);
+     }
+ 
++    public static class RapidShouldTick {
++        Long2BooleanOpenHashMap map = new Long2BooleanOpenHashMap();
++
++        public boolean shouldTick(Level level, BlockPos pos) {
++            long position = pos.asLong();
++            if (map.containsKey(position)) {
++                return map.get(position);
++            }
++            boolean value = MultiPaperChunkHandler.shouldTick(level, pos);
++            map.put(position, value);
++            return value;
++        }
++    }
++
+     public static void onChunkLoad(LevelChunk chunk) {
+         ExternalServer owner = MultiPaper.chunkOwnerToSet.remove(new ChunkKey(chunk.level.getWorld().getName(), chunk.locX, chunk.locZ));
+         if (owner != null) {

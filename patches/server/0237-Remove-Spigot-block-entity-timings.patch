@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 28 Nov 2022 00:41:28 +0100
+Subject: [PATCH] Remove Spigot block entity timings.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/block/entity/BlockEntity.java b/src/main/java/net/minecraft/world/level/block/entity/BlockEntity.java
+index 7802754877859161f5d59f65802a0d7afe9e41cb..7045b6a384e4bc2c50dc300a2a6160139806ec6a 100644
+--- a/src/main/java/net/minecraft/world/level/block/entity/BlockEntity.java
++++ b/src/main/java/net/minecraft/world/level/block/entity/BlockEntity.java
+@@ -29,7 +29,7 @@ import co.aikar.timings.Timing; // Paper
+ public abstract class BlockEntity {
+     public static boolean IGNORE_TILE_UPDATES = false; // Paper // MultiPaper - set public
+ 
+-    public Timing tickTimer = MinecraftTimings.getTileEntityTimings(this); // Paper
++    //public Timing tickTimer = MinecraftTimings.getTileEntityTimings(this); // Paper // MultiPaper
+     // CraftBukkit start - data containers
+     private static final CraftPersistentDataTypeRegistry DATA_TYPE_REGISTRY = new CraftPersistentDataTypeRegistry();
+     public CraftPersistentDataContainer persistentDataContainer;
+diff --git a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
+index c47f23dca3c96d84992d4094278f2939aa8842c0..e27432ae11a0ae639c1a86e7d17d9c699165ce5f 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -1271,7 +1271,7 @@ public class LevelChunk extends ChunkAccess {
+                         ProfilerFiller gameprofilerfiller = LevelChunk.this.level.getProfiler();
+ 
+                         gameprofilerfiller.push(this::getType);
+-                        this.blockEntity.tickTimer.startTiming(); // Spigot
++                        // this.blockEntity.tickTimer.startTiming(); // Spigot // MultiPaper
+                         BlockState iblockdata = LevelChunk.this.getBlockState(blockposition);
+ 
+                         if (this.blockEntity.getType().isValid(iblockdata)) {
+@@ -1293,7 +1293,7 @@ public class LevelChunk extends ChunkAccess {
+                         // Paper end
+                         // Spigot start
+                     } finally {
+-                        this.blockEntity.tickTimer.stopTiming();
++                        // this.blockEntity.tickTimer.stopTiming(); // MultiPaper
+                         // Spigot end
+                     }
+                 }
