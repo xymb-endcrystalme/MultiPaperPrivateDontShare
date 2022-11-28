@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 28 Nov 2022 03:21:01 +0100
+Subject: [PATCH] Fast skip non-ticking hoppers.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/Level.java b/src/main/java/net/minecraft/world/level/Level.java
+index 2d52c575b9a2c3fad30800cc15ecbc20f7bbf424..d3b168c6dff19a79d1e8297b744541294b3ab8de 100644
+--- a/src/main/java/net/minecraft/world/level/Level.java
++++ b/src/main/java/net/minecraft/world/level/Level.java
+@@ -52,6 +52,7 @@ import net.minecraft.world.level.block.BaseFireBlock;
+ import net.minecraft.world.level.block.Block;
+ import net.minecraft.world.level.block.Blocks;
+ import net.minecraft.world.level.block.entity.BlockEntity;
++import net.minecraft.world.level.block.entity.HopperBlockEntity;
+ import net.minecraft.world.level.block.entity.TickingBlockEntity;
+ import net.minecraft.world.level.block.state.BlockState;
+ import net.minecraft.world.level.border.BorderChangeListener;
+@@ -979,13 +980,23 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+                 continue;
+             }
+             // Spigot end
++            // MultiPaper start
++            boolean fastSkip = false;
++            if (tickingblockentity instanceof LevelChunk.RebindableTickingBlockEntityWrapper) {
++                Object obj = ((LevelChunk.RebindableTickingBlockEntityWrapper)tickingblockentity).getBlockEntity();
++                if (obj instanceof LevelChunk.BoundTickingBlockEntity) {
++                    Object obj2 = ((LevelChunk.BoundTickingBlockEntity)obj).getBlockEntity();
++                    if (obj2 instanceof HopperBlockEntity) fastSkip = ((HopperBlockEntity)obj2).fastSkip();
++                }
++            }
++            // MultiPaper end
+ 
+             if (tickingblockentity.isRemoved()) {
+                 // Spigot start
+                 tilesThisCycle--;
+                 toRemove.add(tickingblockentity); // Paper - use removeAll
+                 // Spigot end
+-            } else if (rapidShouldTick.shouldTick(this, tickingblockentity.getPos()) && this.shouldTickBlocksAt(tickingblockentity.getPos())) { // MultiPaper - should tick
++            } else if (!fastSkip && rapidShouldTick.shouldTick(this, tickingblockentity.getPos()) && this.shouldTickBlocksAt(tickingblockentity.getPos())) { // MultiPaper - should tick
+                 tickingblockentity.tick();
+                 // Paper start - execute chunk tasks during tick
+                 if ((this.tileTickPosition & 127) == 0) {
+diff --git a/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java b/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+index c994501917f2b42962e011dfb1d058dad89e511a..8cd86e4bed7c9d890ed4c4f002cbc574e70b53f8 100644
+--- a/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java
++++ b/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java
+@@ -778,6 +778,13 @@ public class HopperBlockEntity extends RandomizableContainerBlockEntity implemen
+         return this.cooldownTime > 0;
+     }
+ 
++    // MultiPaper start
++    public boolean fastSkip() {
++        if (--this.cooldownTime > 0) return true;
++        return false;
++    }
++    // MultiPaper end
++
+     private boolean isOnCustomCooldown() {
+         return this.cooldownTime > 8;
+     }
+diff --git a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
+index e27432ae11a0ae639c1a86e7d17d9c699165ce5f..abcd28498cfcf3fe6936f01f8e2a5a5e04118572 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -1213,7 +1213,7 @@ public class LevelChunk extends ChunkAccess {
+         private EntityCreationType() {}
+     }
+ 
+-    private class RebindableTickingBlockEntityWrapper implements TickingBlockEntity {
++    public class RebindableTickingBlockEntityWrapper implements TickingBlockEntity { // RebindableTickingBlockEntityWrapper // MultiPaper
+ 
+         private TickingBlockEntity ticker;
+ 
+@@ -1248,9 +1248,15 @@ public class LevelChunk extends ChunkAccess {
+         public String toString() {
+             return this.ticker.toString() + " <wrapped>";
+         }
++
++        // MultiPaper start
++        public TickingBlockEntity getBlockEntity() {
++            return ticker;
++        }
++        // MultiPaper end
+     }
+ 
+-    private class BoundTickingBlockEntity<T extends BlockEntity> implements TickingBlockEntity {
++    public class BoundTickingBlockEntity<T extends BlockEntity> implements TickingBlockEntity { // MultiPaper
+ 
+         private final T blockEntity;
+         private final BlockEntityTicker<T> ticker;
+@@ -1321,5 +1327,11 @@ public class LevelChunk extends ChunkAccess {
+ 
+             return "Level ticker for " + s + "@" + this.getPos();
+         }
++
++        // MultiPaper start
++        public T getBlockEntity() {
++            return blockEntity;
++        }
++        // MultiPaper end
+     }
+ }

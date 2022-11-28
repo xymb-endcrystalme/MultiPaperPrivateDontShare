@@ -5,7 +5,7 @@ Subject: [PATCH] Optimize MultiPaperChunkHandler.shouldTick.
 
 
 diff --git a/src/main/java/net/minecraft/world/level/Level.java b/src/main/java/net/minecraft/world/level/Level.java
-index 48f1df5e9334d430fd46c08670a1824c2f88c13e..e4807860d99aeacbba2f7049090a95ae3bb4c5a7 100644
+index bc6ca38be626aee567638cf7532eee8c3bdaedfd..2d52c575b9a2c3fad30800cc15ecbc20f7bbf424 100644
 --- a/src/main/java/net/minecraft/world/level/Level.java
 +++ b/src/main/java/net/minecraft/world/level/Level.java
 @@ -962,6 +962,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
@@ -24,7 +24,7 @@ index 48f1df5e9334d430fd46c08670a1824c2f88c13e..e4807860d99aeacbba2f7049090a95ae
 +            } else if (rapidShouldTick.shouldTick(this, tickingblockentity.getPos()) && this.shouldTickBlocksAt(tickingblockentity.getPos())) { // MultiPaper - should tick
                  tickingblockentity.tick();
                  // Paper start - execute chunk tasks during tick
-                 if ((this.tileTickPosition & 7) == 0) {
+                 if ((this.tileTickPosition & 127) == 0) {
 diff --git a/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java b/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java
 index 53b29b38c607c89d20b289a628503b337f768696..99b7264686793ee5af8797c8c3d7dc0e6e6f0e8d 100644
 --- a/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java
