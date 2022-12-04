@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sun, 4 Dec 2022 06:04:09 +0100
+Subject: [PATCH] NBT deduplication WIP.
+
+
+diff --git a/src/main/java/xymb/NBTDeduplicator.java b/src/main/java/xymb/NBTDeduplicator.java
+index 14b916aa4eb5d6efa68734dd399e45b182ff6afb..60936ebc47e70be0a8df4c45f219a99455daa3f3 100644
+--- a/src/main/java/xymb/NBTDeduplicator.java
++++ b/src/main/java/xymb/NBTDeduplicator.java
+@@ -133,6 +133,7 @@ public class NBTDeduplicator {
+ //                blockEntityNbt.put("ItemsDedup", listTagDeduplicated);
+                 blockEntityNbt.remove("Items");
+                 blockEntityNbt.put("NewItems", newItems);
++                blockEntityNbt.put("Items", new ListTag()); // For backwards compatibility
+             }
+         }
+ //        nbt.put("ItemsDedupPalette", deduplicator.makePalette());
