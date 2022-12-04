@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Fri, 2 Dec 2022 01:50:43 +0100
+Subject: [PATCH] Revert "Remove spam."
+
+This reverts commit d6e0e104ce52b74e0a0d48d38e3947d41fdb4c6b.
+
+diff --git a/src/main/java/puregero/multipaper/ExternalServerConnection.java b/src/main/java/puregero/multipaper/ExternalServerConnection.java
+index c69f4fa02d09c8741ce4fa0a5279040c05cd453f..4107d90a1283619ed75aae0c6c3562fffe4072bb 100644
+--- a/src/main/java/puregero/multipaper/ExternalServerConnection.java
++++ b/src/main/java/puregero/multipaper/ExternalServerConnection.java
+@@ -226,8 +226,8 @@ public class ExternalServerConnection extends ChannelInitializer<SocketChannel>
+     public void requestChunk(String world, int cx, int cz, Consumer<DataInputStream> callback) {
+         if (callback != null) {
+             if (chunkCallbacks.put(new ChunkKey(world, cx, cz), callback) != null) {
+-//                LOGGER.warn("A chunk callback already existed for " + world + ", " + cx + ", " + cz + " (new request is to " + externalServer.getName() + ")");
+-//                LOGGER.warn("Stats for " + externalServer.getName() + ": last packet sent=" + (System.currentTimeMillis() - lastPacketSent) + "ms ago; last packet received=" + (System.currentTimeMillis() - lastPacketReceived) + "ms ago");
++                LOGGER.warn("A chunk callback already existed for " + world + ", " + cx + ", " + cz + " (new request is to " + externalServer.getName() + ")");
++                LOGGER.warn("Stats for " + externalServer.getName() + ": last packet sent=" + (System.currentTimeMillis() - lastPacketSent) + "ms ago; last packet received=" + (System.currentTimeMillis() - lastPacketReceived) + "ms ago");
+             }
+         }
+ 
+@@ -238,8 +238,8 @@ public class ExternalServerConnection extends ChannelInitializer<SocketChannel>
+     public void requestEntities(String world, int cx, int cz, Consumer<DataInputStream> callback) {
+         if (callback != null) {
+             if (entitiesCallbacks.put(new ChunkKey(world, cx, cz), callback) != null) {
+-//                LOGGER.warn("An entities callback already existed for " + world + ", " + cx + ", " + cz + " (new request is to " + externalServer.getName() + ")");
+-//                LOGGER.warn("Stats for " + externalServer.getName() + ": last packet sent=" + (System.currentTimeMillis() - lastPacketSent) + "ms ago; last packet received=" + (System.currentTimeMillis() - lastPacketReceived) + "ms ago");
++                LOGGER.warn("An entities callback already existed for " + world + ", " + cx + ", " + cz + " (new request is to " + externalServer.getName() + ")");
++                LOGGER.warn("Stats for " + externalServer.getName() + ": last packet sent=" + (System.currentTimeMillis() - lastPacketSent) + "ms ago; last packet received=" + (System.currentTimeMillis() - lastPacketReceived) + "ms ago");
+             }
+         }
+ 

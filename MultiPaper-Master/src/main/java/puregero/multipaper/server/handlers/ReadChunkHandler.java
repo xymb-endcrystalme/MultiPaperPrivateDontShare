@@ -18,8 +18,8 @@ public class ReadChunkHandler {
     public static void handle(ServerConnection connection, ReadChunkMessage message) {
         long nano = System.nanoTime();
         if (nano - lastTimestamp > 1000000000) {
-//            System.out.println("CHUNKREADS " + String.valueOf(counterLocal) + " " + String.valueOf(counter - counterLocal) + " " + String.valueOf(completed) + " " + Thread.currentThread().getName());
-//            System.out.println("CHUNKLOCKS " + String.valueOf(ChunkLockManager.locks.size()));
+            System.out.println("CHUNKREADS " + String.valueOf(counterLocal) + " " + String.valueOf(counter - counterLocal) + " " + String.valueOf(completed) + " " + Thread.currentThread().getName());
+            System.out.println("CHUNKLOCKS " + String.valueOf(ChunkLockManager.locks.size()));
             lastTimestamp = nano;
             counter = 0;
             counterLocal = 0;

@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Fri, 2 Dec 2022 01:37:36 +0100
+Subject: [PATCH] Revert ""No chunk holder after ticket has been added"
+ exception removed. xD"
+
+This reverts commit 1e44a1b838fe819b5009cea4de16a88f0d77f1e4.
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index 50b34075c5ff312ffc5b7dc146c35651b851dbc9..f63f1e29329c82c660715502045d817c6775791a 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -584,7 +584,7 @@ public class ServerChunkCache extends ChunkSource {
+                 gameprofilerfiller.pop();
+                 if (this.chunkAbsent(playerchunk, l)) {
+                     this.distanceManager.removeTicket(TicketType.REQUIRED_LOAD, chunkcoordintpair, l, identifier); // Paper
+-                    //throw (IllegalStateException) Util.pauseInIde(new IllegalStateException("No chunk holder after ticket has been added")); // MultiPaper - let's just ignore this instead of crashing...
++                    throw (IllegalStateException) Util.pauseInIde(new IllegalStateException("No chunk holder after ticket has been added"));
+                 }
+             }
+ 
