@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sun, 4 Dec 2022 06:04:09 +0100
+Subject: [PATCH] Fix shulker box handling.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java b/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
+index 137bdf1168b9e1d00164471e4e79f56c000c2696..0280a0fb22b8ccd8c6532fd72fb7c02b365fb876 100644
+--- a/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
++++ b/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
+@@ -243,7 +243,7 @@ public class ShulkerBoxBlockEntity extends RandomizableContainerBlockEntity impl
+ 
+     public void loadFromTag(CompoundTag nbt) {
+         this.itemStacks = NonNullList.withSize(this.getContainerSize(), ItemStack.EMPTY);
+-        if (!this.tryLoadLootTable(nbt) && nbt.contains("Items", 9)) {
++        if (!this.tryLoadLootTable(nbt) && (nbt.contains("Items", 9) || nbt.contains("NewItems", 9))) {
+             ContainerHelper.loadAllItems(nbt, this.itemStacks);
+         }
+ 
