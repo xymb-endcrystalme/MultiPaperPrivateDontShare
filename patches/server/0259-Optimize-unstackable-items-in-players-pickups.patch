@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Tue, 6 Dec 2022 02:19:54 +0100
+Subject: [PATCH] Optimize unstackable items in players pickups.
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/player/Inventory.java b/src/main/java/net/minecraft/world/entity/player/Inventory.java
+index 04c54087706a581a70b7d56c88ee7ed24fc2011b..491639bd2cd293e6989a45fb056bcc0669e9af79 100644
+--- a/src/main/java/net/minecraft/world/entity/player/Inventory.java
++++ b/src/main/java/net/minecraft/world/entity/player/Inventory.java
+@@ -119,6 +119,7 @@ public class Inventory implements Container, Nameable {
+     }
+ 
+     private boolean hasRemainingSpaceForItem(ItemStack existingStack, ItemStack stack) {
++        if (!existingStack.isStackable() || !stack.isStackable()) return false; // MultiPaper
+         return !existingStack.isEmpty() && ItemStack.isSameItemSameTags(existingStack, stack) && existingStack.isStackable() && existingStack.getCount() < existingStack.getMaxStackSize() && existingStack.getCount() < this.getMaxStackSize();
+     }
+ 
