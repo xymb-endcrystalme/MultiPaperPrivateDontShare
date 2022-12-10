@@ -23,6 +23,7 @@ dependencies {
     implementation("io.netty:netty-all:4.1.75.Final")
     implementation("com.github.luben:zstd-jni:1.4.4-2")
     implementation("org.lz4:lz4-java:1.8.0")
+    implementation("com.google.code.gson:gson:2.10")
     compileOnly("net.md-5:bungeecord-api:1.16-R0.4")
     compileOnly("com.velocitypowered:velocity-api:3.0.1")
     annotationProcessor("com.velocitypowered:velocity-api:3.0.1")
