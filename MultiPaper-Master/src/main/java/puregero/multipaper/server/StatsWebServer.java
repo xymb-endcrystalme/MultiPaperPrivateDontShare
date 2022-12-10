@@ -21,7 +21,7 @@ public class StatsWebServer implements HttpHandler {
     private double size;
     private final Set<String> worlds = Set.of("world", "world_nether", "world_the_end");
     private final Path playerDataFolder = Path.of("world", "playerdata");
-    private static final double MEGABYTE = 1024L * 1024L;
+    private static final double MEGABYTE = 1024D * 1024D;
 
     public StatsWebServer(int port) throws IOException {
         server = HttpServer.create(new InetSocketAddress(port), 0);
@@ -29,9 +29,7 @@ public class StatsWebServer implements HttpHandler {
         server.setExecutor(null);
         server.start();
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            server.stop(0);
-        }));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> server.stop(0)));
 
         Timer dataCrawlerTimer = new Timer("Stats Crawler Timer", true);
         dataCrawlerTimer.schedule(new TimerTask() {
@@ -48,7 +46,7 @@ public class StatsWebServer implements HttpHandler {
                                     return 0;
                                 }
                             }).sum();
-                            size = bytesSize / MEGABYTE;
+                            size = bytesSize / MEGABYTE / 1000.0D;
                         }
                     }
 
