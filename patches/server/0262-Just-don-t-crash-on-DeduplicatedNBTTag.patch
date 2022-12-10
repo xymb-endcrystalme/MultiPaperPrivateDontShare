@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 10 Dec 2022 06:49:59 +0100
+Subject: [PATCH] Just don't crash on DeduplicatedNBTTag.
+
+
+diff --git a/src/main/java/xymb/DeduplicatedNBTTag.java b/src/main/java/xymb/DeduplicatedNBTTag.java
+index 11f01c1e4e9c76065cfdbb9f1137e544f1eb1ba7..097a4d7d9f128e2e59fd3d93620ebd77bb9a99f0 100644
+--- a/src/main/java/xymb/DeduplicatedNBTTag.java
++++ b/src/main/java/xymb/DeduplicatedNBTTag.java
+@@ -20,7 +20,8 @@ public class DeduplicatedNBTTag implements Tag {
+     }
+ 
+     public void write(DataOutput output) throws IOException {
+-        throw new IOException("DeduplicatedNBTTag is not supposed to be written!");
++//        tag.write(output);
++//        throw new IOException("DeduplicatedNBTTag is not supposed to be written!");
+     }
+ 
+     public String toString() {
