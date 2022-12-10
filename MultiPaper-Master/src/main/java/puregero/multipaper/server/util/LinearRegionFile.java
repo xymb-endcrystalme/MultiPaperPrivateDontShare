@@ -15,7 +15,7 @@ import com.github.luben.zstd.ZstdInputStream;
 import net.jpountz.xxhash.XXHashFactory;
 
 public class LinearRegionFile {
-    private File regionFile;
+    private final File regionFile;
     private final byte[][] buffer = new byte[32*32][];
     private final int[] bufferUncompressedSize = new int[32*32];
     private boolean requiresSaving = false;
@@ -72,7 +72,7 @@ public class LinearRegionFile {
 
                 if (fileLength != HEADER_SIZE + dataCount + FOOTER_SIZE) {
                     System.out.println(this.regionFile.toString());
-                    System.out.println("FILE LENGTH INVALID! " + String.valueOf(fileLength) + " " + String.valueOf(HEADER_SIZE + dataCount + FOOTER_SIZE));
+                    System.out.println("FILE LENGTH INVALID! " + fileLength + " " + (HEADER_SIZE + dataCount + FOOTER_SIZE));
                     return;
                 }
 
@@ -89,7 +89,7 @@ public class LinearRegionFile {
                     return;
                 }
 
-                DataInputStream dataStream = new DataInputStream(new ZstdInputStream​(new ByteArrayInputStream(rawCompressed)));
+                DataInputStream dataStream = new DataInputStream(new ZstdInputStream(new ByteArrayInputStream(rawCompressed)));
 
                 int completeDataCount = 0;
                 int total = 4096 * 2;
@@ -233,8 +233,8 @@ public class LinearRegionFile {
         FileOutputStream fileStream = new FileOutputStream(tempFile);
 
         ByteArrayOutputStream zstdByteArray = new ByteArrayOutputStream();
-        ZstdOutputStream zstdStream = new ZstdOutputStream​(zstdByteArray, COMPRESSION_LEVEL);
-        zstdStream.setChecksum​(true);
+        ZstdOutputStream zstdStream = new ZstdOutputStream(zstdByteArray, COMPRESSION_LEVEL);
+        zstdStream.setChecksum(true);
         DataOutputStream zstdDataStream = new DataOutputStream(zstdStream);
         DataOutputStream dataStream = new DataOutputStream(fileStream);
 
