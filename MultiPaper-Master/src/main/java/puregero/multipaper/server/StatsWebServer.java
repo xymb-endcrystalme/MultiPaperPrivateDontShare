@@ -10,6 +10,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.CharacterIterator;
+import java.text.StringCharacterIterator;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -18,10 +20,9 @@ public class StatsWebServer implements HttpHandler {
     private final Gson gson = new Gson();
     private final HttpServer server;
     private long offlinePlayers = 0;
-    private double size;
+    private String size;
     private final Set<String> worlds = Set.of("world", "world_nether", "world_the_end");
     private final Path playerDataFolder = Path.of("world", "playerdata");
-    private static final double MEGABYTE = 1024D * 1024D;
 
     public StatsWebServer(int port) throws IOException {
         server = HttpServer.create(new InetSocketAddress(port), 0);
@@ -36,19 +37,22 @@ public class StatsWebServer implements HttpHandler {
             @Override
             public void run() {
                 try {
+                    long totalSize = 0;
                     for (String world : worlds) {
                         try (var stream = Files.walk(Path.of(world))) {
-                            long bytesSize = stream.mapToLong(p -> {
+                            totalSize += stream.mapToLong(p -> {
                                 try {
-                                    return Files.size(p);
+                                    if (Files.isRegularFile(p)) {
+                                        return Files.size(p);
+                                    }
                                 } catch (IOException e) {
                                     e.printStackTrace();
-                                    return 0;
                                 }
+                                return 0;
                             }).sum();
-                            size = bytesSize / MEGABYTE / 1000.0D;
                         }
                     }
+                    size = humanReadableByteCountSI(totalSize);
 
                     try (var stream = Files.list(playerDataFolder)) {
                         offlinePlayers = stream.count();
@@ -84,6 +88,18 @@ public class StatsWebServer implements HttpHandler {
         }
     }
 
-    private record StatsResponse(long uniquePlayers, double size) {
+    private record StatsResponse(long uniquePlayers, String size) {
+    }
+
+    public static String humanReadableByteCountSI(long bytes) {
+        if (-1000 < bytes && bytes < 1000) {
+            return bytes + " B";
+        }
+        CharacterIterator ci = new StringCharacterIterator("kMGTPE");
+        while (bytes <= -999_950 || bytes >= 999_950) {
+            bytes /= 1000;
+            ci.next();
+        }
+        return String.format("%.1f %cB", bytes / 1000.0, ci.current());
     }
 }
