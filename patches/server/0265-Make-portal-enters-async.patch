@@ -65,10 +65,10 @@ index c240d18a48a2d4795d0fe75defc0a02ab693a4ce..c7ea15ca0c6594e832d58ec4aed5c86d
                      this.portalTime -= 4;
 diff --git a/src/main/java/xymb/KnownGeneratedChunks.java b/src/main/java/xymb/KnownGeneratedChunks.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..b1b9839f4582325f8cc9a76164c729e563875b19
+index 0000000000000000000000000000000000000000..bda9e26fce78359d30e9e92bfdde0f0fadaed384
 --- /dev/null
 +++ b/src/main/java/xymb/KnownGeneratedChunks.java
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,31 @@
 +package xymb;
 +
 +import it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap;
@@ -80,13 +80,23 @@ index 0000000000000000000000000000000000000000..b1b9839f4582325f8cc9a76164c729e5
 +    Long2BooleanOpenHashMap knownLoadedChunks = new Long2BooleanOpenHashMap();
 +
 +    public boolean alreadyGenerated(ServerChunkCache chunkSource, int x, int z) {
-+        /*CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> future = */
++        if (x > 30000000 / 16) x = 30000000 / 16;
++        if (x < -30000000 / 16) x = -30000000 / 16;
++        if (z > 30000000 / 16) z = 30000000 / 16;
++        if (z < -30000000 / 16) z = -30000000 / 16;
 +        long key = CoordinateUtils.getChunkKey(x, z);
-+        if (knownLoadedChunks.get(key)) return true;
++        synchronized (knownLoadedChunks) {
++            if (knownLoadedChunks.get(key)) return true;
++            if (!knownLoadedChunks.containsKey(key)) {
++                chunkSource.getChunkAtAsynchronously(x, z, true, true).whenCompleteAsync((either, ex) -> {
++                    synchronized (knownLoadedChunks) {
++                        knownLoadedChunks.put(key, true);
++                    }
++                });
++                knownLoadedChunks.put(key, false);
++            }
++        }
 +
-+        chunkSource.getChunkAtAsynchronously(x, z, true, true).whenCompleteAsync((either, ex) -> {
-+            knownLoadedChunks.put(key, true);
-+        });
 +        return false;
 +    }
 +}
