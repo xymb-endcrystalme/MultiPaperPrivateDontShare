@@ -1,0 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Thu, 15 Dec 2022 00:41:33 +0100
+Subject: [PATCH] Deduplication, hopefully this time ROBUSTLY...
+
+
+diff --git a/src/main/java/puregero/multipaper/MultiPaperIO.java b/src/main/java/puregero/multipaper/MultiPaperIO.java
+index 4ed3cdc068ae99c39f1e635f1baa772a1b9afbff..c9b03938ce36b53b89338a6e67020c87887e33ee 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperIO.java
++++ b/src/main/java/puregero/multipaper/MultiPaperIO.java
+@@ -99,9 +99,15 @@ public class MultiPaperIO extends Thread implements IOHandler {
+                 .thenApplyAsync(in -> {
+                     try {
+                         if (in == null) return null;
+-
++long start = System.nanoTime();
+                         CompoundTag compoundTag = NbtIo.read(in);
+-                        xymb.NBTDeduplicator.deduplicateContainersOnRead(compoundTag);
++long neww = System.nanoTime();
++//                        if (neww - start > 1000000000) {
++                        if (key.getX() == -1251564 && key.getZ() == 1562500) {
++                            System.out.println("AAAAA " + (neww - start) + " " + key.getX() + " " + key.getZ());
++                        }
++//                        xymb.NBTDeduplicator.deduplicateContainersOnRead(compoundTag);
++                        xymb.NBTDeduplicator.deduplicateContainersOnRead2(compoundTag);
+ 
+ //                        return in == null ? null : NbtIo.read(in);
+                         return compoundTag;
+diff --git a/src/main/java/xymb/NBTDeduplicator.java b/src/main/java/xymb/NBTDeduplicator.java
+index 14b916aa4eb5d6efa68734dd399e45b182ff6afb..147663710ba0f50160f248c1e5e642f4473954a1 100644
+--- a/src/main/java/xymb/NBTDeduplicator.java
++++ b/src/main/java/xymb/NBTDeduplicator.java
+@@ -105,7 +105,39 @@ public class NBTDeduplicator {
+ //        System.out.println("WOW " + list.size());
+         return list;
+     }
++/*
++    public static void reduplicateContainersOnWrite(CompoundTag nbt) {
++        ListTag nbttaglist3 = nbt.getList("block_entities", 10);
++        for (int k1 = 0; k1 < nbttaglist3.size(); ++k1) {
++            CompoundTag blockEntityNbt = nbttaglist3.getCompound(k1);
++            if (blockEntityNbt.contains("NewItems")) {
++                ListTag listTag = (ListTag)blockEntityNbt.get("NewItems");
++
++                ListTag newItems = new ListTag();
++
++                for(int i = 0; i < listTag.size(); ++i) {
++                    DeduplicatedNBTTag deduplicatedTag = (DeduplicatedNBTTag)listTag.get(i);
++                    CompoundTag compoundTag = deduplicatedTag.tag;
++    //                compoundTag.remove("Slot");
++    //                compoundTag.remove("Count");
++                    compoundTag.putByte("Count", (byte)deduplicatedTag.count);
++    //                int j = compoundTag.getByte("Slot") & 255;
++                    int j = deduplicatedTag.slot;
++                    if (j >= 0 && j < stacks.size()) {
++                        stacks.set(j, ItemStack.ofRapidUnsafe(compoundTag));
++                    }
++
++                    newItems.add(i, new DeduplicatedNBTTag(compoundTag, slot, count));
+ 
++                }
++    
++                blockEntityNbt.remove("NewItems");
++                blockEntityNbt.put("Items", newItems);
++            }
++        }
++
++    }
++*/
+     public static void deduplicateContainersOnRead(CompoundTag nbt) {
+         // TODO: Try catch
+         NBTDeduplicator deduplicator = new NBTDeduplicator();
+@@ -138,6 +170,31 @@ public class NBTDeduplicator {
+ //        nbt.put("ItemsDedupPalette", deduplicator.makePalette());
+     }
+ 
++    public static void deduplicateContainersOnRead2(CompoundTag nbt) {
++        NBTDeduplicator deduplicator = new NBTDeduplicator();
++
++        ListTag nbttaglist3 = nbt.getList("block_entities", 10);
++        for (int k1 = 0; k1 < nbttaglist3.size(); ++k1) {
++            CompoundTag blockEntityNbt = nbttaglist3.getCompound(k1);
++            if (blockEntityNbt.contains("Items")) {
++                ListTag items = blockEntityNbt.getList("Items", 10);
++                ListTag newItems = new ListTag();
++
++                for(int i = 0; i < items.size(); ++i) {
++                    CompoundTag compoundTag = items.getCompound(i);
++
++                    if (compoundTag.contains("tag")) {
++                        compoundTag.put("tag", deduplicator.addAndDedupe(compoundTag.getCompound("tag")));
++                    }
++                    newItems.add(i, compoundTag);
++                }
++
++                blockEntityNbt.remove("Items");
++                blockEntityNbt.put("Items", newItems);
++            }
++        }
++    }
++
+     public static void deduplicateContainersOnWrite(CompoundTag nbt) {
+         ListTag nbttaglist3 = nbt.getList("block_entities", 10);
+         for (int k1 = 0; k1 < nbttaglist3.size(); ++k1) {

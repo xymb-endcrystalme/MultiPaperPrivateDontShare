@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Wed, 14 Dec 2022 12:28:57 +0100
+Subject: [PATCH] Revert "Make portal enters async."
+
+This reverts commit b79604193f4d9e3030410817424598eb94874f50.
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index d1f6ffa921a03faeba6c5370f10bd1353b072af5..0c11e285dd71a75d471357b16e025e07f0e47ac7 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -189,7 +189,6 @@ import puregero.multipaper.externalserverprotocol.SpawnUpdatePacket;
+ import puregero.multipaper.externalserverprotocol.TimeUpdatePacket;
+ 
+ public class ServerLevel extends Level implements WorldGenLevel {
+-    public xymb.KnownGeneratedChunks generatedChunks = new xymb.KnownGeneratedChunks();
+ 
+     public static final BlockPos END_SPAWN_POINT = new BlockPos(100, 50, 0);
+     private static final int MIN_RAIN_DELAY_TIME = 12000;
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd..c240d18a48a2d4795d0fe75defc0a02ab693a4ce 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -3038,25 +3038,7 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+                 ResourceKey<Level> resourcekey = this.level.getTypeKey() == LevelStem.NETHER ? Level.OVERWORLD : Level.NETHER; // CraftBukkit
+                 ServerLevel worldserver1 = minecraftserver.getLevel(resourcekey);
+ 
+-                int chunkCoordsX = (int)this.getX();
+-                int chunkCoordsZ = (int)this.getZ();
+-                boolean overworld = this.level.getTypeKey() == LevelStem.OVERWORLD;
+-                if (overworld) {
+-                    chunkCoordsX = chunkCoordsX / 16 / 8;
+-                    chunkCoordsZ = chunkCoordsZ / 16 / 8;
+-                } else {
+-                    chunkCoordsX = chunkCoordsX / 16 * 8;
+-                    chunkCoordsZ = chunkCoordsZ / 16 * 8;
+-                }
+-                boolean everythingLoaded = true;
+-
+-                for (int x = -3 ; x <= 3 ; x++)
+-                    for (int z = -3 ; z <= 3 ; z++)
+-                        if (worldserver1.generatedChunks.alreadyGenerated(worldserver1.chunkSource, chunkCoordsX + x, chunkCoordsZ + z) == false)
+-                            everythingLoaded = false;
+-
+-                boolean failedPortalTravel = false;
+-                if (true && !this.isPassenger() && this.portalTime++ >= i && everythingLoaded) { // CraftBukkit
++                if (true && !this.isPassenger() && this.portalTime++ >= i) { // CraftBukkit
+                     this.level.getProfiler().push("portal");
+                     this.portalTime = i;
+                     // Paper start
+@@ -3076,14 +3058,9 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+                     } // Paper
+                     // CraftBukkit end
+                     this.level.getProfiler().pop();
+-                    this.portalTime = i - 20;
+-                    if (this.level == worldserver) {
+-                        System.out.println("Failed portal travel!");
+-                        failedPortalTravel = true;
+-                    }
+                 }
+ 
+-                if (!failedPortalTravel) this.isInsidePortal = false;
++                this.isInsidePortal = false;
+             } else {
+                 if (this.portalTime > 0) {
+                     this.portalTime -= 4;
+diff --git a/src/main/java/xymb/KnownGeneratedChunks.java b/src/main/java/xymb/KnownGeneratedChunks.java
+deleted file mode 100644
+index b1b9839f4582325f8cc9a76164c729e563875b19..0000000000000000000000000000000000000000
+--- a/src/main/java/xymb/KnownGeneratedChunks.java
++++ /dev/null
+@@ -1,21 +0,0 @@
+-package xymb;
+-
+-import it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap;
+-import net.minecraft.server.level.ServerLevel;
+-import ca.spottedleaf.starlight.common.util.CoordinateUtils;
+-import net.minecraft.server.level.ServerChunkCache;
+-
+-public class KnownGeneratedChunks {
+-    Long2BooleanOpenHashMap knownLoadedChunks = new Long2BooleanOpenHashMap();
+-
+-    public boolean alreadyGenerated(ServerChunkCache chunkSource, int x, int z) {
+-        /*CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> future = */
+-        long key = CoordinateUtils.getChunkKey(x, z);
+-        if (knownLoadedChunks.get(key)) return true;
+-
+-        chunkSource.getChunkAtAsynchronously(x, z, true, true).whenCompleteAsync((either, ex) -> {
+-            knownLoadedChunks.put(key, true);
+-        });
+-        return false;
+-    }
+-}
