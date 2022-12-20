@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.CharacterIterator;
@@ -39,7 +40,7 @@ public class StatsWebServer implements HttpHandler {
                 try {
                     long totalSize = 0;
                     for (String world : worlds) {
-                        try (var stream = Files.walk(Path.of(world))) {
+                        try (var stream = Files.walk(Path.of(world), 200, FileVisitOption.FOLLOW_LINKS)) {
                             totalSize += stream.mapToLong(p -> {
                                 try {
                                     if (Files.isRegularFile(p)) {
