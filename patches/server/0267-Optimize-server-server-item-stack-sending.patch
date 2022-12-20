@@ -1,0 +1,108 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Tue, 20 Dec 2022 08:10:17 +0100
+Subject: [PATCH] Optimize server<->server item stack sending.
+
+
+diff --git a/src/main/java/net/minecraft/world/item/ItemStack.java b/src/main/java/net/minecraft/world/item/ItemStack.java
+index 8d52f7f99dc3fd5b6c61149cca60f25b4bf1d6c4..75c46be619d4dc57a128ea5177f73c3f10d8a7a1 100644
+--- a/src/main/java/net/minecraft/world/item/ItemStack.java
++++ b/src/main/java/net/minecraft/world/item/ItemStack.java
+@@ -572,6 +572,50 @@ public final class ItemStack {
+ 
+         return nbt;
+     }
++
++    public CompoundTag simplifiedTag;
++
++    public static CompoundTag staticCreateSimplifiedTag(CompoundTag nbt) {
++        if (nbt == null) return null;
++        CompoundTag simplifiedTag = nbt.copy();
++        if (simplifiedTag.contains("tag")) {
++            CompoundTag tag = simplifiedTag.getCompound("tag");
++            if (tag.contains("BlockEntityTag")) {
++                CompoundTag blockEntityTag = tag.getCompound("BlockEntityTag");
++                if (blockEntityTag.contains("Items")) {
++                    blockEntityTag.remove("Items");
++                }
++            }
++        }
++        return simplifiedTag;
++    }
++
++    private CompoundTag createSimplifiedTag() {
++        if (this.tag == null) return null;
++        CompoundTag simplifiedTag = this.tag.copy();
++        if (simplifiedTag.contains("BlockEntityTag")) {
++            CompoundTag blockEntityTag = simplifiedTag.getCompound("BlockEntityTag");
++            if (blockEntityTag.contains("Items")) {
++//                CompoundTag items = blockEntityTag.getCompound("Items");
++                blockEntityTag.remove("Items");
++            }
++        }
++        this.simplifiedTag = simplifiedTag;
++        return this.simplifiedTag;
++    }
++
++    public CompoundTag saveSimplifiedForMultiPaper(CompoundTag nbt) {
++        ResourceLocation minecraftkey = Registry.ITEM.getKey(this.getItem());
++
++        nbt.putString("id", minecraftkey == null ? "minecraft:air" : minecraftkey.toString());
++        nbt.putByte("Count", (byte) this.count);
++        if (this.simplifiedTag == null) this.simplifiedTag = createSimplifiedTag();
++        if (this.simplifiedTag != null) {
++            nbt.put("tag", this.simplifiedTag);
++        }
++
++        return nbt;
++    }
+     // MultiPaper end
+ 
+     public int getMaxStackSize() {
+diff --git a/src/main/java/puregero/multipaper/MultiPaperEnderChestHandler.java b/src/main/java/puregero/multipaper/MultiPaperEnderChestHandler.java
+index d8074c83ab7d10c14e59f86402b724877dedfb67..2ec11ebdb2824823a9aea7e2657a5cfaf25c0068 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperEnderChestHandler.java
++++ b/src/main/java/puregero/multipaper/MultiPaperEnderChestHandler.java
+@@ -47,12 +47,13 @@ public class MultiPaperEnderChestHandler implements ContainerListener {
+         for (int i = 0; i < sentItems.length; i++) {
+             ItemStack item = container.getItem(i);
+             if (!item.equals(sentItems[i])) {
+-                sentItems[i] = item.copy();
++                sentItems[i] = item.rapidCloneItemStack(true);
+ 
+                 if (broadcastChanges) {
+                     CompoundTag itemToSend = new CompoundTag();
+                     itemToSend.putInt("Slot", i);
+                     item.save(itemToSend);
++//                    itemToSend = ItemStack.staticCreateSimplifiedTag(itemToSend);
+                     items.add(itemToSend);
+                 }
+             }
+@@ -72,6 +73,7 @@ public class MultiPaperEnderChestHandler implements ContainerListener {
+             CompoundTag itemToSend = new CompoundTag();
+             itemToSend.putInt("Slot", i);
+             item.save(itemToSend);
++//            itemToSend = ItemStack.staticCreateSimplifiedTag(itemToSend);
+             items.add(itemToSend);
+         }
+ 
+diff --git a/src/main/java/puregero/multipaper/MultiPaperInventoryHandler.java b/src/main/java/puregero/multipaper/MultiPaperInventoryHandler.java
+index 82df917876720cb790b32d22bfd88597e6428757..c123c05e64f2bd82ac8bfda9635558f02901af74 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperInventoryHandler.java
++++ b/src/main/java/puregero/multipaper/MultiPaperInventoryHandler.java
+@@ -288,6 +288,7 @@ public class MultiPaperInventoryHandler {
+                     CompoundTag item = new CompoundTag();
+                     item.putInt("Slot", i);
+                     inventoryComponent.get(i).save(item);
++//                    item = ItemStack.staticCreateSimplifiedTag(item);
+                     items.add(item);
+ 
+                     if (!MultiPaper.isRealPlayer(player)) {
+@@ -322,6 +323,7 @@ public class MultiPaperInventoryHandler {
+                 CompoundTag item = new CompoundTag();
+                 item.putInt("Slot", i);
+                 inventoryComponent.get(i).save(item);
++//                item = ItemStack.staticCreateSimplifiedTag(item);
+                 items.add(item);
+             }
+ 

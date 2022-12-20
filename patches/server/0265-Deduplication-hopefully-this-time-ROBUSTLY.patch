@@ -5,23 +5,16 @@ Subject: [PATCH] Deduplication, hopefully this time ROBUSTLY...
 
 
 diff --git a/src/main/java/puregero/multipaper/MultiPaperIO.java b/src/main/java/puregero/multipaper/MultiPaperIO.java
-index 4ed3cdc068ae99c39f1e635f1baa772a1b9afbff..c9b03938ce36b53b89338a6e67020c87887e33ee 100644
+index 4ed3cdc068ae99c39f1e635f1baa772a1b9afbff..d009db91af4130355475386c694ae69415c12712 100644
 --- a/src/main/java/puregero/multipaper/MultiPaperIO.java
 +++ b/src/main/java/puregero/multipaper/MultiPaperIO.java
-@@ -99,9 +99,15 @@ public class MultiPaperIO extends Thread implements IOHandler {
+@@ -99,9 +99,8 @@ public class MultiPaperIO extends Thread implements IOHandler {
                  .thenApplyAsync(in -> {
                      try {
                          if (in == null) return null;
 -
-+long start = System.nanoTime();
                          CompoundTag compoundTag = NbtIo.read(in);
 -                        xymb.NBTDeduplicator.deduplicateContainersOnRead(compoundTag);
-+long neww = System.nanoTime();
-+//                        if (neww - start > 1000000000) {
-+                        if (key.getX() == -1251564 && key.getZ() == 1562500) {
-+                            System.out.println("AAAAA " + (neww - start) + " " + key.getX() + " " + key.getZ());
-+                        }
-+//                        xymb.NBTDeduplicator.deduplicateContainersOnRead(compoundTag);
 +                        xymb.NBTDeduplicator.deduplicateContainersOnRead2(compoundTag);
  
  //                        return in == null ? null : NbtIo.read(in);
