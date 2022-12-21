@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Wed, 21 Dec 2022 15:34:42 +0100
+Subject: [PATCH] Fix new chunk generation memory leak.
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
+index dfd91f8819f8d83b0524df48a4861894b13264d5..8a7a2afb7232991b2e10a0b584a56a36fa1c6b94 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
+@@ -1271,6 +1271,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+     }
+ 
+     private CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> scheduleChunkGeneration(ChunkHolder holder, ChunkStatus requiredStatus) {
++//        Thread.dumpStack();
+         ChunkPos chunkcoordintpair = holder.getPos();
+         CompletableFuture<Either<List<ChunkAccess>, ChunkHolder.ChunkLoadingFailure>> completablefuture = this.getChunkRangeFuture(chunkcoordintpair, requiredStatus.getRange(), (i) -> {
+             return this.getDependencyStatus(requiredStatus, i);
+diff --git a/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueue.java b/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueue.java
+index 06147419c62dfd62f544217244b218044645caf9..db4fd22f1baebc8fe22ac5612173784a1bfef36b 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueue.java
++++ b/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueue.java
+@@ -142,9 +142,14 @@ public class ChunkTaskPriorityQueue<T> {
+     }
+ 
+     public void strip(int maxSize) {
++        int i = 0;
++        String total = ++i + " QUEUE ";
+         for (var queue: taskQueue) {
+-            if (maxSize <= 0) queue.clear();
++//            System.out.println(++i + " QUEUE " + queue.size());
++            total = total.concat(String.format("%3d", queue.size()) + " ");
+             maxSize -= queue.size();
+-        }
++            if (maxSize <= 0) queue.clear();
++}
++        System.out.println(total);
+     }
+ }
+diff --git a/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueueSorter.java b/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueueSorter.java
+index 47bcc4a2d3dbced63073b571ead67068e7ab1368..c7cee4b90287aa91a9b9642ce30d7c1e5a903751 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueueSorter.java
++++ b/src/main/java/net/minecraft/server/level/ChunkTaskPriorityQueueSorter.java
+@@ -33,7 +33,7 @@ public class ChunkTaskPriorityQueueSorter implements ChunkHolder.LevelChangeList
+     public ChunkTaskPriorityQueueSorter(List<ProcessorHandle<?>> actors, Executor executor, int maxQueues) {
+         this.queues = actors.stream().collect(Collectors.toMap(Function.identity(), (actor) -> {
+             // MultiPaper start
+-            var newQueue = new ChunkTaskPriorityQueue<>(actor.name() + "_queue", maxQueues);
++            ChunkTaskPriorityQueue<? extends Function<ProcessorHandle<Unit>, ?>> newQueue = new ChunkTaskPriorityQueue<>(actor.name() + "_queue", maxQueues);
+             if (actor.name().equals("worldgen")) worldgenQueue = newQueue;
+             return newQueue;
+             // MultiPaper end
+@@ -187,6 +187,11 @@ public class ChunkTaskPriorityQueueSorter implements ChunkHolder.LevelChangeList
+             //        });
+     }
+ 
++    public long totalSizeWorldgen() {
++        if (worldgenQueue == null) return 0;
++        return worldgenQueue.totalSize();
++    }
++
+     public long totalSize() {
+         final java.util.concurrent.atomic.AtomicLong size = new java.util.concurrent.atomic.AtomicLong(0);
+         this.queues.values().forEach((queue) -> {
+diff --git a/src/main/java/net/minecraft/server/level/DistanceManager.java b/src/main/java/net/minecraft/server/level/DistanceManager.java
+index 002c3f3d997f24434dbd313fe8874fd7059add16..0aa2650ba9ca791e8be92c65bf23dab0e7f20411 100644
+--- a/src/main/java/net/minecraft/server/level/DistanceManager.java
++++ b/src/main/java/net/minecraft/server/level/DistanceManager.java
+@@ -186,7 +186,13 @@ public abstract class DistanceManager {
+         //this.f.a(); // Paper - no longer used
+         //this.tickingTicketsTracker.runAllUpdates(); // Paper - no longer used
+         org.spigotmc.AsyncCatcher.catchOp("DistanceManagerTick"); // Paper
+-        chunkStorage.queueSorter.stripWorldgenQueue(50); // MultiPaper
++//        chunkStorage.queueSorter.stripWorldgenQueue(200); // MultiPaper
++
++
++        if (chunkStorage.queueSorter.totalSizeWorldgen() > 200) {
++            return false;
++        }
++        //chunkStorage.queueSorter.stripAboveTotal(200); // MultiPaper
+         //        System.out.println(chunkStorage.queueSorter.totalSize());
+ //        if (chunkStorage.queueSorter.totalSize() > 100) return false; // MultiPaper - prevent memory leak
+         // this.playerTicketManager.runAllUpdates(); // Paper - no longer used
