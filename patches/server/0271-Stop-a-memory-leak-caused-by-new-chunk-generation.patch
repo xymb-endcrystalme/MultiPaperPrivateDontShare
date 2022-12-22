@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Thu, 22 Dec 2022 15:52:32 +0100
+Subject: [PATCH] Stop a memory leak caused by new chunk generation.
+
+
+diff --git a/src/main/java/io/papermc/paper/chunk/PlayerChunkLoader.java b/src/main/java/io/papermc/paper/chunk/PlayerChunkLoader.java
+index fbf9596bfd9aa5a0206923da20f8dbb8b69d8f2d..b4da88ed14cf195a8d19d101d97cf2a5f83c83b7 100644
+--- a/src/main/java/io/papermc/paper/chunk/PlayerChunkLoader.java
++++ b/src/main/java/io/papermc/paper/chunk/PlayerChunkLoader.java
+@@ -616,7 +616,6 @@ public final class PlayerChunkLoader {
+         if (this.chunkLoadQueue.isEmpty()) {
+             return;
+         }
+-
+         final int maxLoads = this.getMaxChunkLoads();
+         final long time = System.nanoTime();
+         boolean updatedCounters = false;
+@@ -742,6 +741,9 @@ public final class PlayerChunkLoader {
+         // try to send more chunks
+         this.trySendChunks();
+ 
++        if (PlayerChunkLoader.this.chunkMap.queueSorter.totalSizeWorldgen() > 200) {
++            return;
++        }
+         // try to queue more chunks to load
+         this.tryLoadChunks();
+     }
+diff --git a/src/main/java/net/minecraft/server/level/DistanceManager.java b/src/main/java/net/minecraft/server/level/DistanceManager.java
+index 0aa2650ba9ca791e8be92c65bf23dab0e7f20411..0d751dc71acf338446a3f838b065c73eec66b40a 100644
+--- a/src/main/java/net/minecraft/server/level/DistanceManager.java
++++ b/src/main/java/net/minecraft/server/level/DistanceManager.java
+@@ -188,10 +188,6 @@ public abstract class DistanceManager {
+         org.spigotmc.AsyncCatcher.catchOp("DistanceManagerTick"); // Paper
+ //        chunkStorage.queueSorter.stripWorldgenQueue(200); // MultiPaper
+ 
+-
+-        if (chunkStorage.queueSorter.totalSizeWorldgen() > 200) {
+-            return false;
+-        }
+         //chunkStorage.queueSorter.stripAboveTotal(200); // MultiPaper
+         //        System.out.println(chunkStorage.queueSorter.totalSize());
+ //        if (chunkStorage.queueSorter.totalSize() > 100) return false; // MultiPaper - prevent memory leak
+@@ -202,6 +198,13 @@ public abstract class DistanceManager {
+             ;
+         }
+ 
++        //System.out.println(chunkStorage.queueSorter.totalSizeWorldgen());
++/*
++        if (chunkStorage.queueSorter.totalSizeWorldgen() > 200) {
++            System.out.println("WOW" + this.ticketLevelUpdates.size());
++            return false;
++        }*/
++
+         // Paper start - replace level propagator
+         ticket_update_loop:
+         while (!this.ticketLevelUpdates.isEmpty()) {
