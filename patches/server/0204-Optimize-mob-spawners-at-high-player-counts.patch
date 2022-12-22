@@ -5,7 +5,7 @@ Subject: [PATCH] Optimize mob spawners at high player counts.
 
 
 diff --git a/src/main/java/net/minecraft/world/entity/LivingEntity.java b/src/main/java/net/minecraft/world/entity/LivingEntity.java
-index 423eae50322f20e394fd989b2b3d3cfe142ea1d9..cbef2f725d7ad03b8a3dae2ea9590c11d73bde57 100644
+index 1d03a27ca78c4e293beef8f7603c9a559c899b30..5bee17e7fc120496fb46e23d26d14af91ccf04a3 100644
 --- a/src/main/java/net/minecraft/world/entity/LivingEntity.java
 +++ b/src/main/java/net/minecraft/world/entity/LivingEntity.java
 @@ -144,6 +144,7 @@ import puregero.multipaper.ExternalServerConnection;

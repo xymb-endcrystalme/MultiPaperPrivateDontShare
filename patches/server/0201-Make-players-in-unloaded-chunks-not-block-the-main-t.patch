@@ -30,7 +30,7 @@ index 0f56ccd588508e14769081a6be5e98182d8afdb0..c240d18a48a2d4795d0fe75defc0a02a
              this.level.getProfiler().pop();
              this.level.getProfiler().push("rest");
 diff --git a/src/main/java/net/minecraft/world/entity/LivingEntity.java b/src/main/java/net/minecraft/world/entity/LivingEntity.java
-index 2bb2d309f8220f03c8ca1fbfb06e4b648f399536..423eae50322f20e394fd989b2b3d3cfe142ea1d9 100644
+index a6deb0329f17ebec1c1e696688ce4497a09c9aea..1d03a27ca78c4e293beef8f7603c9a559c899b30 100644
 --- a/src/main/java/net/minecraft/world/entity/LivingEntity.java
 +++ b/src/main/java/net/minecraft/world/entity/LivingEntity.java
 @@ -1955,6 +1955,7 @@ public abstract class LivingEntity extends Entity {

@@ -1,0 +1,112 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Tue, 29 Nov 2022 17:11:10 +0100
+Subject: [PATCH] NBT deduplication WIP.
+
+
+diff --git a/build.gradle.kts b/build.gradle.kts
+index ddaac25a3274a5973260cc37bb001af6afb08ac2..29ced8b41929e090167e76bf840a9b2ff25ce743 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -58,6 +58,7 @@ dependencies {
+     // Pufferfish end
+ 
+     implementation("io.methvin:directory-watcher:0.15.0") // MultiPaper
++    implementation("net.openhft:zero-allocation-hashing:0.16") // MultiPaper
+ 
+     implementation("com.github.technove:AIR:fe3dbb4420") // Airplane - config
+     implementation("com.github.technove:Flare:2c4a2114a0") // Airplane - flare
+diff --git a/src/main/java/net/minecraft/world/ContainerHelper.java b/src/main/java/net/minecraft/world/ContainerHelper.java
+index 0816f63fc019ed94566da9ea5266e991d4884485..714e8fa7e6bcf18d7eeb78fb353204d9453618cb 100644
+--- a/src/main/java/net/minecraft/world/ContainerHelper.java
++++ b/src/main/java/net/minecraft/world/ContainerHelper.java
+@@ -43,8 +43,13 @@ public class ContainerHelper {
+     public static void loadAllItems(CompoundTag nbt, NonNullList<ItemStack> stacks) {
+         ListTag listTag = nbt.getList("Items", 10);
+ 
++        xymb.NBTDeduplicator deduplicator = new xymb.NBTDeduplicator();
++
+         for(int i = 0; i < listTag.size(); ++i) {
+             CompoundTag compoundTag = listTag.getCompound(i);
++//            compoundTag = deduplicator.addAndDedupe(compoundTag);
++            deduplicator.addAndDedupe(compoundTag);
++
+             int j = compoundTag.getByte("Slot") & 255;
+             if (j >= 0 && j < stacks.size()) {
+                 stacks.set(j, ItemStack.ofRapidUnsafe(compoundTag));
+diff --git a/src/main/java/xymb/NBTDeduplicator.java b/src/main/java/xymb/NBTDeduplicator.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..2d3757b5b992dbece54ebeaaff8e5d44a816cffb
+--- /dev/null
++++ b/src/main/java/xymb/NBTDeduplicator.java
+@@ -0,0 +1,70 @@
++package xymb;
++
++//import net.jpountz.xxhash.XXHashFactory;
++import java.io.IOException;
++import net.minecraft.nbt.CompoundTag;
++import java.io.ByteArrayOutputStream;
++import java.io.DataOutputStream;
++import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
++import net.openhft.hashing.LongTupleHashFunction;
++
++public class NBTDeduplicator {
++    static Object2ObjectOpenHashMap<Hash128, CompoundTag> tags = new Object2ObjectOpenHashMap<>();
++
++    public static class Hash128 {
++        long lower, upper;
++
++        Hash128(long[] hash) {
++            this.lower = hash[0];
++            this.upper = hash[1];
++        }
++
++        @Override
++        public boolean equals(final Object o) {
++            if (o instanceof Hash128) {
++                Hash128 other = (Hash128)o;
++                return this.lower == other.lower && this.upper == other.upper;
++            }
++            return false;
++        }
++
++        @Override
++        public int hashCode() {
++            return (int)this.lower;
++        }
++    }
++
++    public Hash128 hashNBT(CompoundTag tag) {
++        ByteArrayOutputStream baos = new ByteArrayOutputStream();
++        try {
++            DataOutputStream dos = new DataOutputStream(baos);
++            tag.write(dos);
++        } catch (IOException ex) {
++            System.out.println("Exception in NBT hashing: " + ex);
++            return null;
++        }
++        long[] rawHash = LongTupleHashFunction.xx128().hashBytes(baos.toByteArray());
++        return new Hash128(rawHash);
++    }
++
++    // TODO: Multithreading
++
++    static int duplicates = 0, nonduplicates = 0;
++
++    public CompoundTag addAndDedupe(CompoundTag tag) {
++        Hash128 hash = hashNBT(tag);
++        if (hash == null) return tag;
++
++        CompoundTag deduplicated = tags.get(hash);
++        if (deduplicated == null) {
++            tags.put(hash, tag);
++            deduplicated = tag;
++            nonduplicates++;
++        } else {
++            duplicates++;
++        }
++        System.out.println(duplicates + " " + nonduplicates + " " + tags.size());
++
++        return deduplicated;
++    }
++}

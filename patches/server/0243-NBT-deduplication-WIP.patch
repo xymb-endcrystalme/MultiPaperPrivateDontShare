@@ -1,112 +1,274 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Xymb <xymb@endcrystal.me>
-Date: Tue, 29 Nov 2022 17:11:10 +0100
+Date: Wed, 30 Nov 2022 01:23:32 +0100
 Subject: [PATCH] NBT deduplication WIP.
 
 
-diff --git a/build.gradle.kts b/build.gradle.kts
-index ddaac25a3274a5973260cc37bb001af6afb08ac2..29ced8b41929e090167e76bf840a9b2ff25ce743 100644
---- a/build.gradle.kts
-+++ b/build.gradle.kts
-@@ -58,6 +58,7 @@ dependencies {
-     // Pufferfish end
- 
-     implementation("io.methvin:directory-watcher:0.15.0") // MultiPaper
-+    implementation("net.openhft:zero-allocation-hashing:0.16") // MultiPaper
- 
-     implementation("com.github.technove:AIR:fe3dbb4420") // Airplane - config
-     implementation("com.github.technove:Flare:2c4a2114a0") // Airplane - flare
 diff --git a/src/main/java/net/minecraft/world/ContainerHelper.java b/src/main/java/net/minecraft/world/ContainerHelper.java
-index 0816f63fc019ed94566da9ea5266e991d4884485..714e8fa7e6bcf18d7eeb78fb353204d9453618cb 100644
+index 714e8fa7e6bcf18d7eeb78fb353204d9453618cb..e8edaf7e8ac82b2c5a78bcad65c9523da331bb33 100644
 --- a/src/main/java/net/minecraft/world/ContainerHelper.java
 +++ b/src/main/java/net/minecraft/world/ContainerHelper.java
-@@ -43,8 +43,13 @@ public class ContainerHelper {
+@@ -6,6 +6,7 @@ import net.minecraft.core.NonNullList;
+ import net.minecraft.nbt.CompoundTag;
+ import net.minecraft.nbt.ListTag;
+ import net.minecraft.world.item.ItemStack;
++import xymb.DeduplicatedNBTTag;
+ 
+ public class ContainerHelper {
+     public static ItemStack removeItem(List<ItemStack> stacks, int slot, int amount) {
+@@ -41,21 +42,28 @@ public class ContainerHelper {
+     }
+ 
      public static void loadAllItems(CompoundTag nbt, NonNullList<ItemStack> stacks) {
++        if (nbt.contains("Items")) { // MultiPaper
          ListTag listTag = nbt.getList("Items", 10);
  
-+        xymb.NBTDeduplicator deduplicator = new xymb.NBTDeduplicator();
-+
+-        xymb.NBTDeduplicator deduplicator = new xymb.NBTDeduplicator();
+-
          for(int i = 0; i < listTag.size(); ++i) {
              CompoundTag compoundTag = listTag.getCompound(i);
-+//            compoundTag = deduplicator.addAndDedupe(compoundTag);
-+            deduplicator.addAndDedupe(compoundTag);
-+
+-//            compoundTag = deduplicator.addAndDedupe(compoundTag);
+-            deduplicator.addAndDedupe(compoundTag);
+-
              int j = compoundTag.getByte("Slot") & 255;
              if (j >= 0 && j < stacks.size()) {
                  stacks.set(j, ItemStack.ofRapidUnsafe(compoundTag));
-diff --git a/src/main/java/xymb/NBTDeduplicator.java b/src/main/java/xymb/NBTDeduplicator.java
+             }
+         }
+-
++        } else if (nbt.contains("NewItems")) {
++            ListTag listTag = (ListTag)nbt.get("NewItems");
++
++            for(int i = 0; i < listTag.size(); ++i) {
++                DeduplicatedNBTTag deduplicatedTag = (DeduplicatedNBTTag)listTag.get(i);
++                CompoundTag compoundTag = deduplicatedTag.tag;
++                int j = compoundTag.getByte("Slot") & 255;
++                if (j >= 0 && j < stacks.size()) {
++                    stacks.set(j, ItemStack.ofRapidUnsafe(compoundTag));
++                }
++            }
++        }
+     }
+ 
+     public static int clearOrCountMatchingItems(Container inventory, Predicate<ItemStack> shouldRemove, int maxCount, boolean dryRun) {
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
+index 9b50c97a42512fe8bf758d2bb50e2dc9652ffe51..f750c2356440c6efda2fbe56372d28f1b8ae8dab 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
+@@ -795,6 +795,7 @@ public class ChunkSerializer {
+         ListTag nbttaglist1 = ChunkSerializer.getListOfCompoundsOrNull(nbt, "block_entities");
+ 
+         return nbttaglist == null && nbttaglist1 == null ? null : (chunk) -> {
++            long start = System.nanoTime();
+             if (nbttaglist != null) {
+                 world.addLegacyChunkEntities(EntityType.loadEntitiesRecursive(nbttaglist, world));
+             }
+@@ -821,6 +822,7 @@ public class ChunkSerializer {
+             chunk.entitiesToLoad = null;
+             chunk.blockEntitiesToLoad = null;
+             // MultiPaper end
++            System.out.println((System.nanoTime() - start) / 1000000.);
+         };
+     }
+ 
+diff --git a/src/main/java/puregero/multipaper/MultiPaper.java b/src/main/java/puregero/multipaper/MultiPaper.java
+index ba52ce56136f68190681e6cbfc5175e7a421a4c3..85164f8112973ea7bd1aec6fc2b1d7b7d99321fe 100644
+--- a/src/main/java/puregero/multipaper/MultiPaper.java
++++ b/src/main/java/puregero/multipaper/MultiPaper.java
+@@ -423,7 +423,6 @@ public class MultiPaper {
+ 
+     public static CompoundTag readRegionFileNBT(String world, String path, int cx, int cz) throws IOException {
+         DataInput in = readRegionFile(world, path, cx, cz);
+-
+         return in == null ? null : NbtIo.read(in);
+     }
+  
+@@ -436,6 +435,7 @@ public class MultiPaper {
+     }
+ 
+     public static void writeRegionFileNBT(String world, String path, int cx, int cz, CompoundTag compoundTag) throws IOException {
++        xymb.NBTDeduplicator.deduplicateContainersOnWrite(compoundTag);
+         writeRegionFile(world, path, cx, cz, nbtToBytes(compoundTag));
+     }
+ 
+diff --git a/src/main/java/puregero/multipaper/MultiPaperIO.java b/src/main/java/puregero/multipaper/MultiPaperIO.java
+index 58ba5b252b48ba176b09506086932af0b3438796..f6234c82549db6c4cde27251d2c5a712d888edf3 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperIO.java
++++ b/src/main/java/puregero/multipaper/MultiPaperIO.java
+@@ -98,8 +98,14 @@ public class MultiPaperIO extends Thread implements IOHandler {
+         CompletableFuture<CompoundTag> future = MultiPaper.readRegionFileAsync(key.getWorld(), path, key.getX(), key.getZ())
+                 .thenApplyAsync(in -> {
+                     try {
+-                        return in == null ? null : NbtIo.read(in);
+-                    } catch (IOException e) {
++                        if (in == null) return null;
++
++                        CompoundTag compoundTag = NbtIo.read(in);
++                        xymb.NBTDeduplicator.deduplicateContainersOnRead(compoundTag);
++
++//                        return in == null ? null : NbtIo.read(in);
++                        return compoundTag;
++                        } catch (IOException e) {
+                         throw new RuntimeException(e);
+                     }
+                 }).exceptionally(exception -> {
+diff --git a/src/main/java/xymb/DeduplicatedNBTTag.java b/src/main/java/xymb/DeduplicatedNBTTag.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..2d3757b5b992dbece54ebeaaff8e5d44a816cffb
+index 0000000000000000000000000000000000000000..8654779f1f478c89ab155b6f7c0b2b8248f83e5c
 --- /dev/null
-+++ b/src/main/java/xymb/NBTDeduplicator.java
-@@ -0,0 +1,70 @@
++++ b/src/main/java/xymb/DeduplicatedNBTTag.java
+@@ -0,0 +1,46 @@
 +package xymb;
 +
-+//import net.jpountz.xxhash.XXHashFactory;
-+import java.io.IOException;
++import net.minecraft.nbt.Tag;
++import net.minecraft.nbt.TagVisitor;
++import net.minecraft.nbt.StreamTagVisitor;
 +import net.minecraft.nbt.CompoundTag;
-+import java.io.ByteArrayOutputStream;
-+import java.io.DataOutputStream;
-+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-+import net.openhft.hashing.LongTupleHashFunction;
++import net.minecraft.nbt.TagType;
 +
-+public class NBTDeduplicator {
-+    static Object2ObjectOpenHashMap<Hash128, CompoundTag> tags = new Object2ObjectOpenHashMap<>();
++import java.io.DataOutput;
++import java.io.IOException;
 +
-+    public static class Hash128 {
-+        long lower, upper;
++public class DeduplicatedNBTTag implements Tag {
++    public CompoundTag tag;
 +
-+        Hash128(long[] hash) {
-+            this.lower = hash[0];
-+            this.upper = hash[1];
-+        }
-+
-+        @Override
-+        public boolean equals(final Object o) {
-+            if (o instanceof Hash128) {
-+                Hash128 other = (Hash128)o;
-+                return this.lower == other.lower && this.upper == other.upper;
-+            }
-+            return false;
-+        }
-+
-+        @Override
-+        public int hashCode() {
-+            return (int)this.lower;
-+        }
++    public DeduplicatedNBTTag(CompoundTag tag) {
++        this.tag = tag;
 +    }
 +
-+    public Hash128 hashNBT(CompoundTag tag) {
-+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-+        try {
-+            DataOutputStream dos = new DataOutputStream(baos);
-+            tag.write(dos);
-+        } catch (IOException ex) {
-+            System.out.println("Exception in NBT hashing: " + ex);
-+            return null;
-+        }
-+        long[] rawHash = LongTupleHashFunction.xx128().hashBytes(baos.toByteArray());
-+        return new Hash128(rawHash);
++    public void write(DataOutput output) throws IOException {
++        throw new IOException("DeduplicatedNBTTag is not supposed to be written!");
 +    }
 +
-+    // TODO: Multithreading
++    public String toString() {
++        return "";
++    }
 +
-+    static int duplicates = 0, nonduplicates = 0;
++    public byte getId() {
++        return -1;
++    }
 +
-+    public CompoundTag addAndDedupe(CompoundTag tag) {
++    public TagType<?> getType() {
++        return null;
++    }
++
++    public Tag copy() {
++        return this;
++    }
++
++    public void accept(TagVisitor visitor) {}
++
++    public StreamTagVisitor.ValueResult accept(StreamTagVisitor visitor) {
++        return null;
++    }
++
++
++}
+diff --git a/src/main/java/xymb/NBTDeduplicator.java b/src/main/java/xymb/NBTDeduplicator.java
+index 2d3757b5b992dbece54ebeaaff8e5d44a816cffb..c2d2ca22ad0baa1b1bfb37c5e87864d79253ac76 100644
+--- a/src/main/java/xymb/NBTDeduplicator.java
++++ b/src/main/java/xymb/NBTDeduplicator.java
+@@ -3,13 +3,14 @@ package xymb;
+ //import net.jpountz.xxhash.XXHashFactory;
+ import java.io.IOException;
+ import net.minecraft.nbt.CompoundTag;
++import net.minecraft.nbt.ListTag;
+ import java.io.ByteArrayOutputStream;
+ import java.io.DataOutputStream;
+ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+ import net.openhft.hashing.LongTupleHashFunction;
+ 
+ public class NBTDeduplicator {
+-    static Object2ObjectOpenHashMap<Hash128, CompoundTag> tags = new Object2ObjectOpenHashMap<>();
++    Object2ObjectOpenHashMap<Hash128, CompoundTag> tags = new Object2ObjectOpenHashMap<>();
+ 
+     public static class Hash128 {
+         long lower, upper;
+@@ -53,7 +54,6 @@ public class NBTDeduplicator {
+ 
+     public CompoundTag addAndDedupe(CompoundTag tag) {
+         Hash128 hash = hashNBT(tag);
+-        if (hash == null) return tag;
+ 
+         CompoundTag deduplicated = tags.get(hash);
+         if (deduplicated == null) {
+@@ -63,8 +63,78 @@ public class NBTDeduplicator {
+         } else {
+             duplicates++;
+         }
+-        System.out.println(duplicates + " " + nonduplicates + " " + tags.size());
++//        System.out.println(duplicates + " " + nonduplicates + " " + tags.size());
+ 
+         return deduplicated;
+     }
++
++    class Pair {
++        CompoundTag first;
++        CompoundTag second;
++    }
++
++    public Pair addAndGetHashTag(CompoundTag tag) {
 +        Hash128 hash = hashNBT(tag);
-+        if (hash == null) return tag;
 +
++        CompoundTag hashTag = new CompoundTag();
 +        CompoundTag deduplicated = tags.get(hash);
 +        if (deduplicated == null) {
 +            tags.put(hash, tag);
 +            deduplicated = tag;
-+            nonduplicates++;
-+        } else {
-+            duplicates++;
 +        }
-+        System.out.println(duplicates + " " + nonduplicates + " " + tags.size());
 +
-+        return deduplicated;
++        hashTag.putLong("l", hash.lower);
++        hashTag.putLong("u", hash.upper);
++        Pair pair = new Pair();
++        pair.first = hashTag;
++        pair.second = deduplicated;
++        return pair;
 +    }
-+}
++
++    public ListTag makePalette() {
++        var list = new ListTag();
++        int i = 0;
++        for (var entry: tags.entrySet()) {
++            CompoundTag hashTag = new CompoundTag();
++            hashTag.putLong("l", entry.getKey().lower);
++            hashTag.putLong("h", entry.getKey().upper);
++            hashTag.put("item", entry.getValue());
++            list.add(i, hashTag);
++            i++;
++        }
++//        System.out.println("WOW " + list.size());
++        return list;
++    }
++
++    public static void deduplicateContainersOnRead(CompoundTag nbt) {
++        // TODO: Try catch
++        NBTDeduplicator deduplicator = new NBTDeduplicator();
++
++        ListTag nbttaglist3 = nbt.getList("block_entities", 10);
++        for (int k1 = 0; k1 < nbttaglist3.size(); ++k1) {
++            CompoundTag blockEntityNbt = nbttaglist3.getCompound(k1);
++            if (blockEntityNbt.contains("Items")) {
++                ListTag items = blockEntityNbt.getList("Items", 10);
++                ListTag newItems = new ListTag();
++
++                ListTag listTagDeduplicated = new ListTag();
++
++                for(int i = 0; i < items.size(); ++i) {
++                    CompoundTag compoundTag = items.getCompound(i);
++
++                    Pair pair = deduplicator.addAndGetHashTag(compoundTag);
++                    listTagDeduplicated.add(i, pair.first);
++                    newItems.add(i, new DeduplicatedNBTTag(pair.second));
++                }
++//                blockEntityNbt.put("ItemsDedup", listTagDeduplicated);
++                blockEntityNbt.remove("Items");
++                blockEntityNbt.put("NewItems", newItems);
++            }
++        }
++        nbt.put("ItemsDedupPalette", deduplicator.makePalette());
++    }
++
++    public static void deduplicateContainersOnWrite(CompoundTag nbt) {
++
++    }
+ }
