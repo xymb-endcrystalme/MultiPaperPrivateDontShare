@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Fri, 6 Jan 2023 15:57:12 +0100
+Subject: [PATCH] Make TNT dupers work again.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java b/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+index 3964c6ca0b7ba243beb666ead03df5272d06b879..89101edd05df7bc324cb8f45fc5d11db756762fa 100644
+--- a/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java
++++ b/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+@@ -444,21 +444,21 @@ public class PistonBaseBlock extends DirectionalBlock {
+ 
+                 takeControlOfChunks.add(new ChunkPos(blockposition3)); // MultiPaper
+ 
+-                // world.setBlock(blockposition3, iblockdata2, 68); // MultiPaper - handled ourselves
++                world.setBlock(blockposition3, iblockdata2, 68); // MultiPaper - handled ourselves
+                 // Paper start - fix a variety of piston desync dupes
+                 if (!allowDesync) {
+                     iblockdata1 = world.getBlockState(oldPos);
+                     map.replace(oldPos, iblockdata1);
+                 }
+ 
+-                PistonMoveBlockStartPacket.startBlockMove((ServerLevel) world, oldPos, blockposition3, dir, retract);
+-                // world.setBlockEntity(MovingPistonBlock.newMovingBlockEntity(blockposition3, iblockdata2, allowDesync ? list1.get(k) : iblockdata1, dir, retract, false)); // MultiPaper - handled ourselves
++                //PistonMoveBlockStartPacket.startBlockMove((ServerLevel) world, oldPos, blockposition3, dir, retract);
++                world.setBlockEntity(MovingPistonBlock.newMovingBlockEntity(blockposition3, iblockdata2, allowDesync ? list1.get(k) : iblockdata1, dir, retract, false)); // MultiPaper - handled ourselves
+                 if (!allowDesync) {
+-                    // world.setBlock(oldPos, Blocks.AIR.defaultBlockState(), 2 | 4 | 16 | 1024); // set air to prevent later physics updates from seeing this block // MultiPaper - handled ourselves
++                    world.setBlock(oldPos, Blocks.AIR.defaultBlockState(), 2 | 4 | 16 | 1024); // set air to prevent later physics updates from seeing this block // MultiPaper - handled ourselves
+                 }
+                 // Paper end - fix a variety of piston desync dupes
+                 aiblockdata[j++] = iblockdata1;
+-                // ((ServerLevel) world).getChunkSource().blockChanged(blockposition3); // MultiPaper
++                ((ServerLevel) world).getChunkSource().blockChanged(blockposition3); // MultiPaper
+             }
+ 
+             if (retract) {
+@@ -517,7 +517,7 @@ public class PistonBaseBlock extends DirectionalBlock {
+             if (retract) {
+                 world.updateNeighborsAt(blockposition1, Blocks.PISTON_HEAD);
+             }
+-
++/*
+             // MultiPaper start - broadcast changes to sync other servers
+             LevelChunk chunk = world.getChunkIfLoaded(pos);
+             if (chunk != null) {
+@@ -531,7 +531,7 @@ public class PistonBaseBlock extends DirectionalBlock {
+                 }
+             }
+             // MultiPaper end
+-
++*/
+             return true;
+         }
+     }
