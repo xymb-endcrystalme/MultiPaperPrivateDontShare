@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Wed, 11 Jan 2023 02:07:33 +0100
+Subject: [PATCH] Disable defensive copy on chunk upgrade.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkStorage.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkStorage.java
+index b230a3d475357d2ffd340f9a89934ea7227e69d0..67db15c7d78476893ad7f272d02fc736126d4812 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkStorage.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkStorage.java
+@@ -82,8 +82,10 @@ public class ChunkStorage implements AutoCloseable {
+     }
+ 
+     public CompoundTag upgradeChunkTag(ResourceKey<LevelStem> resourcekey, Supplier<DimensionDataStorage> supplier, CompoundTag nbttagcompound, Optional<ResourceKey<Codec<? extends ChunkGenerator>>> optional, ChunkPos pos, @Nullable LevelAccessor generatoraccess) {
++        long start = System.currentTimeMillis();
+         // CraftBukkit end
+-        nbttagcompound = nbttagcompound.copy(); // Paper - defensive copy, another thread might modify this
++        // nbttagcompound = nbttagcompound.copy(); // Paper - defensive copy, another thread might modify this // Xymb - uses a TON of memory
++
+         int i = ChunkStorage.getVersion(nbttagcompound);
+ 
+         // CraftBukkit start
+@@ -131,6 +133,8 @@ public class ChunkStorage implements AutoCloseable {
+         // Spigot end
+ 
+         nbttagcompound.remove("__context");
++        if (System.currentTimeMillis() - start > 20)
++            System.out.println("CHUNK_UPGRADE " + pos + " " + (System.currentTimeMillis() - start));
+         return nbttagcompound;
+     }
+ 
