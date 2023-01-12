@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Thu, 12 Jan 2023 19:51:14 +0100
+Subject: [PATCH] Slow down entities brain 5 times.
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/npc/Villager.java b/src/main/java/net/minecraft/world/entity/npc/Villager.java
+index 93077e8c6b5a35adc6febb749d1d08be172402f1..7648983408ab1f8dc7526d9b3696d7e021c4ef9b 100644
+--- a/src/main/java/net/minecraft/world/entity/npc/Villager.java
++++ b/src/main/java/net/minecraft/world/entity/npc/Villager.java
+@@ -252,7 +252,8 @@ public class Villager extends AbstractVillager implements ReputationEventHandler
+         this.level.getProfiler().push("villagerBrain");
+         // Pufferfish start
+         if (!inactive) {
+-            if (this.behaviorTick++ % this.activatedPriority == 0) // Pufferfish
++            int priority = this.activatedPriority * 5; // Xymb
++            if (this.behaviorTick++ % priority == 0) // Pufferfish Xymb
+             this.getBrain().tick((ServerLevel) this.level, this); // Paper
+          }
+         // Pufferfish end
