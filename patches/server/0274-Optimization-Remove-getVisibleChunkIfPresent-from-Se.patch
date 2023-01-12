@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Thu, 12 Jan 2023 17:19:57 +0100
+Subject: [PATCH] Optimization: Remove getVisibleChunkIfPresent from
+ ServerChunkCache.java
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index 62f988ccdda2963cdd36fe2b7a5b0e2a7e07c57f..d78304f7f884733a4e2b4727d4a45f5ed1ec0a07 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -897,9 +897,11 @@ public class ServerChunkCache extends ChunkSource {
+                     LOGGER.warn(chunk1 + " isn't loaded!");
+                 }
+ 
+-                if (getVisibleChunkIfPresent(chunk1.getPos().longKey) == null) {
+-                    LOGGER.warn(chunk1 + " isn't in the visible chunks!");
+-                }
++                // Xymb start - takes a long time just to generate a message
++                // if (getVisibleChunkIfPresent(chunk1.getPos().longKey) == null) {
++                //     LOGGER.warn(chunk1 + " isn't in the visible chunks!");
++                // }
++                // Xymb end
+ 
+                 // MultiPaper start - Don't tick this chunk if we don't own it
+                 boolean isTicking = chunkMap.getDistanceManager().inEntityTickingRange(chunkcoordintpair.longKey);
