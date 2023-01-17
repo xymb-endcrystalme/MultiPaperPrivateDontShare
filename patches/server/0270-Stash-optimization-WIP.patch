@@ -30,7 +30,7 @@ index dd4bf3763e794b2756bfba29f993898cd4f64174..deef362850115281f7299cd5986f8d85
      }
  
 diff --git a/src/main/java/net/minecraft/world/item/ItemStack.java b/src/main/java/net/minecraft/world/item/ItemStack.java
-index 8f4b029b67d3c33f5ae64f1974772496b2a21f21..5488c4be732d04de70d043439e413b57868f441c 100644
+index 8f4b029b67d3c33f5ae64f1974772496b2a21f21..0dcecdbe73a5c6ea80d7eed74d638a1ecd3db636 100644
 --- a/src/main/java/net/minecraft/world/item/ItemStack.java
 +++ b/src/main/java/net/minecraft/world/item/ItemStack.java
 @@ -737,6 +737,7 @@ public final class ItemStack {
@@ -45,7 +45,7 @@ index 8f4b029b67d3c33f5ae64f1974772496b2a21f21..5488c4be732d04de70d043439e413b57
          }
      }
  
-+    private void reduplicate() {
++    public void reduplicate() {
 +        if (this.tag != null)
 +            this.tag = xymb.NBTDeduplicator.instance().reduplicateTagNoCopy(this.tag);
 +    }
@@ -69,6 +69,30 @@ index abcd28498cfcf3fe6936f01f8e2a5a5e04118572..356f9b255f945b70ba2cf3dfd1dc3a21
 +        return retval;
      }
      // CraftBukkit end
+ 
+diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventory.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventory.java
+index 30ac442049088200e9ab77a561c59cbc58aaa28f..7cc9d723787a5b981db94702e3f187cb8231f08d 100644
+--- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventory.java
++++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftInventory.java
+@@ -56,6 +56,7 @@ public class CraftInventory implements Inventory {
+ 
+         for (int i = 0; i < size; i++) {
+             net.minecraft.world.item.ItemStack mcItem = mcItems.get(i);
++            mcItem.reduplicate(); // Xymb
+             items[i] = (mcItem.isEmpty()) ? null : CraftItemStack.asCraftMirror(mcItem);
+         }
+ 
+diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemStack.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemStack.java
+index 03b4f18000d455e48044eb7a15cd667acef5f14d..5f85a0258e8a9558a7d7551c8e39ee7a9f5e834a 100644
+--- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemStack.java
++++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemStack.java
+@@ -65,6 +65,7 @@ public final class CraftItemStack extends ItemStack {
+     }
+ 
+     public static CraftItemStack asCraftMirror(net.minecraft.world.item.ItemStack original) {
++        original.reduplicate(); // Xymb
+         return new CraftItemStack((original == null || original.isEmpty()) ? null : original);
+     }
  
 diff --git a/src/main/java/puregero/multipaper/ChunkKey.java b/src/main/java/puregero/multipaper/ChunkKey.java
 index 928fe46b5061ff6a1acbec61eec698756e8ac124..a66d01e292e5cc4008b22c171ec09642da9939cc 100644
