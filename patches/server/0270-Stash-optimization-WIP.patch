@@ -1,0 +1,740 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Tue, 29 Nov 2022 17:11:10 +0100
+Subject: [PATCH] Stash optimization WIP.
+
+
+diff --git a/build.gradle.kts b/build.gradle.kts
+index ddaac25a3274a5973260cc37bb001af6afb08ac2..29ced8b41929e090167e76bf840a9b2ff25ce743 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -58,6 +58,7 @@ dependencies {
+     // Pufferfish end
+ 
+     implementation("io.methvin:directory-watcher:0.15.0") // MultiPaper
++    implementation("net.openhft:zero-allocation-hashing:0.16") // MultiPaper
+ 
+     implementation("com.github.technove:AIR:fe3dbb4420") // Airplane - config
+     implementation("com.github.technove:Flare:2c4a2114a0") // Airplane - flare
+diff --git a/src/main/java/net/minecraft/network/FriendlyByteBuf.java b/src/main/java/net/minecraft/network/FriendlyByteBuf.java
+index 46d89d3dc9d607ca171db3d819b6c4d6d420efc9..ec6671cc860258c6f5e23dfad4c420b1e32c5802 100644
+--- a/src/main/java/net/minecraft/network/FriendlyByteBuf.java
++++ b/src/main/java/net/minecraft/network/FriendlyByteBuf.java
+@@ -567,7 +567,8 @@ public class FriendlyByteBuf extends ByteBuf {
+         }
+     }
+ 
+-    public FriendlyByteBuf writeItem(ItemStack stack) {
++    // Xymb start
++    public FriendlyByteBuf writeItemDeduplicated(ItemStack stack) {
+         if (stack.isEmpty() || stack.getItem() == null) { // CraftBukkit - NPE fix itemstack.getItem()
+             this.writeBoolean(false);
+         } else {
+@@ -577,7 +578,31 @@ public class FriendlyByteBuf extends ByteBuf {
+             this.writeId(Registry.ITEM, item);
+             this.writeByte(stack.getCount());
+             CompoundTag nbttagcompound = null;
++            if (item.canBeDepleted() || item.shouldOverrideMultiplayerNbt()) {
++                // Spigot start - filter
++                // stack = stack.copy(); // MultiPaper - seems unnecessary
++                // CraftItemStack.setItemMeta(stack, CraftItemStack.getItemMeta(stack)); // Paper - This is no longer with raw NBT being handled in metadata
++                // Spigot end
++                nbttagcompound = stack.getTag();
++            }
++
++            this.writeNbt(nbttagcompound);
++        }
++
++        return this;
++    }
++    // Xymb end
++
++    public FriendlyByteBuf writeItem(ItemStack stack) {
++        if (stack.isEmpty() || stack.getItem() == null) { // CraftBukkit - NPE fix itemstack.getItem()
++            this.writeBoolean(false);
++        } else {
++            this.writeBoolean(true);
++            Item item = stack.getItem();
+ 
++            this.writeId(Registry.ITEM, item);
++            this.writeByte(stack.getCount());
++            CompoundTag nbttagcompound = null;
+             if (item.canBeDepleted() || item.shouldOverrideMultiplayerNbt()) {
+                 // Spigot start - filter
+                 // stack = stack.copy(); // MultiPaper - seems unnecessary
+diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index dd4bf3763e794b2756bfba29f993898cd4f64174..deef362850115281f7299cd5986f8d85c86739ae 100644
+--- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -2054,7 +2054,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic
+             }
+         }
+ 
+-        System.out.println("TIME " + String.valueOf(handleUseItemOn_totalTime));
++//        System.out.println("TIME " + String.valueOf(handleUseItemOn_totalTime));
+         handleUseItemOn_totalTime += System.nanoTime() - start;
+     }
+ 
+diff --git a/src/main/java/net/minecraft/world/ContainerHelper.java b/src/main/java/net/minecraft/world/ContainerHelper.java
+index 0816f63fc019ed94566da9ea5266e991d4884485..9da0b070ec6ccda84cf999ae1107915b5b095e2d 100644
+--- a/src/main/java/net/minecraft/world/ContainerHelper.java
++++ b/src/main/java/net/minecraft/world/ContainerHelper.java
+@@ -6,6 +6,7 @@ import net.minecraft.core.NonNullList;
+ import net.minecraft.nbt.CompoundTag;
+ import net.minecraft.nbt.ListTag;
+ import net.minecraft.world.item.ItemStack;
++import xymb.NBTDeduplicator;
+ 
+ public class ContainerHelper {
+     public static ItemStack removeItem(List<ItemStack> stacks, int slot, int amount) {
+@@ -41,16 +42,17 @@ public class ContainerHelper {
+     }
+ 
+     public static void loadAllItems(CompoundTag nbt, NonNullList<ItemStack> stacks) {
+-        ListTag listTag = nbt.getList("Items", 10);
+-
+-        for(int i = 0; i < listTag.size(); ++i) {
+-            CompoundTag compoundTag = listTag.getCompound(i);
+-            int j = compoundTag.getByte("Slot") & 255;
+-            if (j >= 0 && j < stacks.size()) {
+-                stacks.set(j, ItemStack.ofRapidUnsafe(compoundTag));
++        if (nbt.contains("Items")) { // MultiPaper
++            ListTag listTag = nbt.getList("Items", 10);
++
++            for(int i = 0; i < listTag.size(); ++i) {
++                CompoundTag compoundTag = listTag.getCompound(i);
++                int j = compoundTag.getByte("Slot") & 255;
++                if (j >= 0 && j < stacks.size()) {
++                    stacks.set(j, ItemStack.ofRapidUnsafe(compoundTag));
++                }
+             }
+         }
+-
+     }
+ 
+     public static int clearOrCountMatchingItems(Container inventory, Predicate<ItemStack> shouldRemove, int maxCount, boolean dryRun) {
+diff --git a/src/main/java/net/minecraft/world/item/ItemStack.java b/src/main/java/net/minecraft/world/item/ItemStack.java
+index 8f4b029b67d3c33f5ae64f1974772496b2a21f21..598dfabee3e26a0fbbc9bcf1fb3d3f6176e082d3 100644
+--- a/src/main/java/net/minecraft/world/item/ItemStack.java
++++ b/src/main/java/net/minecraft/world/item/ItemStack.java
+@@ -287,18 +287,19 @@ public final class ItemStack {
+             this.processText(); // Paper
+             this.getItem().verifyTagAfterLoad(this.tag);
+         }
+-
+         if (this.getItem().canBeDepleted()) {
+             this.setDamageValue(this.getDamageValue());
+         }
+ 
+         markDirty(); // MultiPaper
++//        this.reduplicate();
+     }
+ 
+     private ItemStack(CompoundTag nbt, boolean rapidUnsafe) { // MultiPaper
+         this.load(nbt, rapidUnsafe);
+         // CraftBukkit end
+         this.updateEmptyCacheFlag();
++//        this.reduplicate();
+     }
+ 
+     public static ItemStack of(CompoundTag nbt) {
+@@ -319,6 +320,15 @@ public final class ItemStack {
+             return ItemStack.EMPTY;
+         }
+     }
++
++    public static ItemStack ofRapidUnsafe(CompoundTag nbt, int count, CompoundTag tag) {
++        try {
++            return new ItemStack(nbt, true);
++        } catch (RuntimeException runtimeexception) {
++            ItemStack.LOGGER.debug("Tried to load invalid item: {}", nbt, runtimeexception);
++            return ItemStack.EMPTY;
++        }
++    }
+     // MultiPaper end
+ 
+     public boolean isEmpty() {
+@@ -546,6 +556,7 @@ public final class ItemStack {
+         nbt.putByte("Count", (byte) this.count);
+         if (this.tag != null) {
+             nbt.put("tag", this.tag.copy());
++//            nbt = xymb.NBTDeduplicator.instance().reduplicateItemStack(nbt);
+         }
+ 
+         return nbt;
+@@ -563,6 +574,50 @@ public final class ItemStack {
+ 
+         return nbt;
+     }
++
++    public CompoundTag simplifiedTag;
++
++    public static CompoundTag staticCreateSimplifiedTag(CompoundTag nbt) {
++        if (nbt == null) return null;
++        CompoundTag simplifiedTag = nbt.copy();
++        if (simplifiedTag.contains("tag")) {
++            CompoundTag tag = simplifiedTag.getCompound("tag");
++            if (tag.contains("BlockEntityTag")) {
++                CompoundTag blockEntityTag = tag.getCompound("BlockEntityTag");
++                if (blockEntityTag.contains("Items")) {
++                    blockEntityTag.remove("Items");
++                }
++            }
++        }
++        return simplifiedTag;
++    }
++
++    private CompoundTag createSimplifiedTag() {
++        if (this.tag == null) return null;
++        CompoundTag simplifiedTag = this.tag.copy();
++        if (simplifiedTag.contains("BlockEntityTag")) {
++            CompoundTag blockEntityTag = simplifiedTag.getCompound("BlockEntityTag");
++            if (blockEntityTag.contains("Items")) {
++//                CompoundTag items = blockEntityTag.getCompound("Items");
++                blockEntityTag.remove("Items");
++            }
++        }
++        this.simplifiedTag = simplifiedTag;
++        return this.simplifiedTag;
++    }
++
++    public CompoundTag saveSimplifiedForMultiPaper(CompoundTag nbt) {
++        ResourceLocation minecraftkey = Registry.ITEM.getKey(this.getItem());
++
++        nbt.putString("id", minecraftkey == null ? "minecraft:air" : minecraftkey.toString());
++        nbt.putByte("Count", (byte) this.count);
++        if (this.simplifiedTag == null) this.simplifiedTag = createSimplifiedTag();
++        if (this.simplifiedTag != null) {
++            nbt.put("tag", this.simplifiedTag);
++        }
++
++        return nbt;
++    }
+     // MultiPaper end
+ 
+     public int getMaxStackSize() {
+@@ -729,6 +784,8 @@ public final class ItemStack {
+ 
+     public ItemStack copy() { return cloneItemStack(false); } // Paper
+     public ItemStack cloneItemStack(boolean origItem) { // Paper
++//        this.reduplicate();
++
+         if (!origItem && this.isEmpty()) { // Paper
+             return ItemStack.EMPTY;
+         } else {
+@@ -737,6 +794,10 @@ public final class ItemStack {
+             itemstack.setPopTime(this.getPopTime());
+             if (this.tag != null) {
+                 itemstack.tag = this.tag.copy();
++//                System.out.println("TAG " + itemstack.tag);
++//                itemstack.tag = xymb.NBTDeduplicator.instance().reduplicateTagNoCopy(itemstack.tag);
++//                System.out.println("TAG2 " + itemstack.tag);
++                itemstack.reduplicate();
+             }
+ 
+             return itemstack;
+@@ -745,16 +806,12 @@ public final class ItemStack {
+ 
+     // MultiPaper start
+     public ItemStack rapidCloneItemStack(boolean origItem) {
+-        if (!origItem && this.isEmpty()) {
+-            return ItemStack.EMPTY;
+-        } else {
+-            ItemStack itemstack = new ItemStack(origItem ? this.item : this.getItem(), this.count);
+-
+-            itemstack.setPopTime(this.getPopTime());
+-            itemstack.tag = this.tag;
++        return cloneItemStack(origItem);
++    }
+ 
+-            return itemstack;
+-        }
++    private void reduplicate() {
++        if (this.tag != null)
++            this.tag = xymb.NBTDeduplicator.instance().reduplicateTagNoCopy(this.tag);
+     }
+ 
+     public static boolean rapidItemStackMatch(ItemStack left, ItemStack right) {
+diff --git a/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java b/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
+index 137bdf1168b9e1d00164471e4e79f56c000c2696..bd6114c2c6fe1586c9bf9aae09b17d6c37951c6a 100644
+--- a/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
++++ b/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
+@@ -243,7 +243,7 @@ public class ShulkerBoxBlockEntity extends RandomizableContainerBlockEntity impl
+ 
+     public void loadFromTag(CompoundTag nbt) {
+         this.itemStacks = NonNullList.withSize(this.getContainerSize(), ItemStack.EMPTY);
+-        if (!this.tryLoadLootTable(nbt) && nbt.contains("Items", 9)) {
++        if (!this.tryLoadLootTable(nbt) && (nbt.contains("Items", 9))) {
+             ContainerHelper.loadAllItems(nbt, this.itemStacks);
+         }
+ 
+diff --git a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
+index abcd28498cfcf3fe6936f01f8e2a5a5e04118572..356f9b255f945b70ba2cf3dfd1dc3a215451a54b 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
++++ b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
+@@ -950,7 +950,11 @@ public class LevelChunk extends ChunkAccess {
+ 
+     @Override
+     public boolean isUnsaved() {
+-        return super.isUnsaved() && !this.mustNotSave && !MultiPaper.isChunkExternal(this); // MultiPaper - only save if no one else owns it
++        var chunkKey = new puregero.multipaper.ChunkKey(this.level.serverLevelData.getLevelName(), this.locX, this.locZ);
++        boolean shouldBeWritten = xymb.DeduplicatorUpdateManager.shouldBeWritten(chunkKey);
++        boolean retval = (super.isUnsaved() || shouldBeWritten) && !this.mustNotSave && !MultiPaper.isChunkExternal(this); // MultiPaper - only save if no one else owns it
++        if (retval && shouldBeWritten) xymb.DeduplicatorUpdateManager.done(chunkKey);
++        return retval;
+     }
+     // CraftBukkit end
+ 
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
+index 9b50c97a42512fe8bf758d2bb50e2dc9652ffe51..bbb58b2755724a095e3476f75b3eff34f5755cc2 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
+@@ -795,6 +795,7 @@ public class ChunkSerializer {
+         ListTag nbttaglist1 = ChunkSerializer.getListOfCompoundsOrNull(nbt, "block_entities");
+ 
+         return nbttaglist == null && nbttaglist1 == null ? null : (chunk) -> {
++            long start = System.nanoTime();
+             if (nbttaglist != null) {
+                 world.addLegacyChunkEntities(EntityType.loadEntitiesRecursive(nbttaglist, world));
+             }
+@@ -821,6 +822,7 @@ public class ChunkSerializer {
+             chunk.entitiesToLoad = null;
+             chunk.blockEntitiesToLoad = null;
+             // MultiPaper end
++//            System.out.println((System.nanoTime() - start) / 1000000.);
+         };
+     }
+ 
+diff --git a/src/main/java/puregero/multipaper/ChunkKey.java b/src/main/java/puregero/multipaper/ChunkKey.java
+index 928fe46b5061ff6a1acbec61eec698756e8ac124..a66d01e292e5cc4008b22c171ec09642da9939cc 100644
+--- a/src/main/java/puregero/multipaper/ChunkKey.java
++++ b/src/main/java/puregero/multipaper/ChunkKey.java
+@@ -42,5 +42,9 @@ public class ChunkKey {
+     public int getZ() {
+         return z;
+     }
++
++    public String toString() {
++        return "<" + this.name + " " + this.x + " " + this.z + ">";
++    }
+ }
+ 
+diff --git a/src/main/java/puregero/multipaper/MultiPaper.java b/src/main/java/puregero/multipaper/MultiPaper.java
+index 608b28aa26c119f5b2b778ad07e3d7ff7b67a53a..115e52bc7f4383ea1bc9312b40819080b4347964 100644
+--- a/src/main/java/puregero/multipaper/MultiPaper.java
++++ b/src/main/java/puregero/multipaper/MultiPaper.java
+@@ -423,8 +423,12 @@ public class MultiPaper {
+ 
+     public static CompoundTag readRegionFileNBT(String world, String path, int cx, int cz) throws IOException {
+         DataInput in = readRegionFile(world, path, cx, cz);
+-
+-        return in == null ? null : NbtIo.read(in);
++        long start = System.nanoTime();
++        CompoundTag compoundTag = NbtIo.read(in);
++        xymb.NBTDeduplicator.deduplicateContainersOnChunkRead(compoundTag, new ChunkKey(world, cx, cz));
++        if (((System.nanoTime() - start) / 1000000.) > 50)
++            System.out.println("readRegionFileNBT_JUMBO_CHUNK_READ " + ((System.nanoTime() - start) / 1000000.) + " " + new ChunkKey(world, cx, cz));
++        return compoundTag;
+     }
+  
+     public static void writeRegionFileNBT(File path, ChunkPos chunkPos, CompoundTag compoundTag) throws IOException {
+@@ -436,7 +440,11 @@ public class MultiPaper {
+     }
+ 
+     public static void writeRegionFileNBT(String world, String path, int cx, int cz, CompoundTag compoundTag) throws IOException {
++        long start = System.nanoTime();
++        xymb.NBTDeduplicator.deduplicateContainersOnWrite(compoundTag);
+         writeRegionFile(world, path, cx, cz, nbtToBytes(compoundTag));
++        if (((System.nanoTime() - start) / 1000000.) > 50)
++            System.out.println("WRITE " + ((System.nanoTime() - start) / 1000000.));
+     }
+ 
+     public static CompoundTag readLevel(String world) throws IOException {
+diff --git a/src/main/java/puregero/multipaper/MultiPaperEnderChestHandler.java b/src/main/java/puregero/multipaper/MultiPaperEnderChestHandler.java
+index d8074c83ab7d10c14e59f86402b724877dedfb67..fb59b45ffe3468c3fa2cee654758ae27912e964e 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperEnderChestHandler.java
++++ b/src/main/java/puregero/multipaper/MultiPaperEnderChestHandler.java
+@@ -47,7 +47,7 @@ public class MultiPaperEnderChestHandler implements ContainerListener {
+         for (int i = 0; i < sentItems.length; i++) {
+             ItemStack item = container.getItem(i);
+             if (!item.equals(sentItems[i])) {
+-                sentItems[i] = item.copy();
++                sentItems[i] = item.rapidCloneItemStack(true);
+ 
+                 if (broadcastChanges) {
+                     CompoundTag itemToSend = new CompoundTag();
+diff --git a/src/main/java/puregero/multipaper/MultiPaperIO.java b/src/main/java/puregero/multipaper/MultiPaperIO.java
+index 58ba5b252b48ba176b09506086932af0b3438796..fc56240b6b90cfa849ecb8357fece9f355de08e2 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperIO.java
++++ b/src/main/java/puregero/multipaper/MultiPaperIO.java
+@@ -98,8 +98,15 @@ public class MultiPaperIO extends Thread implements IOHandler {
+         CompletableFuture<CompoundTag> future = MultiPaper.readRegionFileAsync(key.getWorld(), path, key.getX(), key.getZ())
+                 .thenApplyAsync(in -> {
+                     try {
+-                        return in == null ? null : NbtIo.read(in);
+-                    } catch (IOException e) {
++                        if (in == null) return null;
++                        long start = System.nanoTime();
++                        CompoundTag compoundTag = NbtIo.read(in);
++                        xymb.NBTDeduplicator.deduplicateContainersOnChunkRead(compoundTag, key);
++                        if (((System.nanoTime() - start) / 1000000.) > 50)
++                            System.out.println("JUMBO_CHUNK_READ " + ((System.nanoTime() - start) / 1000000.) + " " + key);
++
++                        return compoundTag;
++                        } catch (IOException e) {
+                         throw new RuntimeException(e);
+                     }
+                 }).exceptionally(exception -> {
+@@ -107,9 +114,9 @@ public class MultiPaperIO extends Thread implements IOHandler {
+                     return PaperFileIOThread.FAILURE_VALUE;
+                 });
+ 
+-        future.thenApply(nbt -> false).completeOnTimeout(true, 15, TimeUnit.SECONDS).thenAccept(timedout -> {
++        future.thenApply(nbt -> false).completeOnTimeout(true, 60, TimeUnit.SECONDS).thenAccept(timedout -> {
+             if (timedout) {
+-//                LOGGER.warn("Timed out reading " + key.getWorld() + "," + path + "," + key.getX() + "," + key.getZ() + ", retrying...");
++                LOGGER.warn("Timed out reading " + key.getWorld() + "," + path + "," + key.getX() + "," + key.getZ() + ", retrying...");
+                 readChunk(key, path).thenAccept(future::complete);
+             }
+         });
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
+index 7b6f86f4a314c4628071bdf54b5aa014b26c8d34..3ef36961e41deec3889c9c9b282da7b56020de17 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
+@@ -42,6 +42,7 @@ public class SendChunkPacket extends ExternalServerPacket {
+                 data = new byte[0];
+             } else {
+                 long startTime = System.nanoTime();
++                xymb.NBTDeduplicator.deduplicateContainersOnWrite(tag);
+                 data = MultiPaper.nbtToBytes(tag);
+                 if (System.nanoTime() - startTime > 10000000) {
+                     System.out.println("SEND_CHUNK_JUMBO_PACKET " + ((System.nanoTime() - startTime) / 1000000.) + " " + world + " " + cx + " " + cz);
+@@ -91,6 +92,7 @@ public class SendChunkPacket extends ExternalServerPacket {
+                 }
+ 
+                 CompoundTag tag = MultiPaper.nbtFromBytes(data);
++                xymb.NBTDeduplicator.deduplicateContainersOnChunkRead(tag, new ChunkKey(world, cx, cz));
+                 CraftWorld craftWorld = ((CraftWorld) Bukkit.getWorld(world));
+                 ServerLevel level = craftWorld != null ? craftWorld.getHandle() : null;
+                 ChunkHolder holder = level != null ? MultiPaper.getChunkHolder(world, cx, cz) : null;
+diff --git a/src/main/java/xymb/DeduplicatorUpdateManager.java b/src/main/java/xymb/DeduplicatorUpdateManager.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..ea3bf4cf09db175ee205fd706e745fcd3db7720c
+--- /dev/null
++++ b/src/main/java/xymb/DeduplicatorUpdateManager.java
+@@ -0,0 +1,29 @@
++package xymb;
++
++import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
++import puregero.multipaper.ChunkKey;
++
++public class DeduplicatorUpdateManager {
++    static ObjectOpenHashSet<ChunkKey> set = new ObjectOpenHashSet<>();
++
++    public static void markForUpdate(ChunkKey key) {
++        synchronized(set) {
++            set.add(key);
++        }
++    }
++
++    public static void done(ChunkKey key) {
++        synchronized(set) {
++            set.remove(key);
++        }
++    }
++
++    public static boolean shouldBeWritten(ChunkKey key) {
++        synchronized(set) {
++            if (set.contains(key)) {
++                return true;
++            }
++            return false;
++        }
++    }
++}
+diff --git a/src/main/java/xymb/NBTDeduplicator.java b/src/main/java/xymb/NBTDeduplicator.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..851709328505f85a9e85729986632a67b054e49e
+--- /dev/null
++++ b/src/main/java/xymb/NBTDeduplicator.java
+@@ -0,0 +1,280 @@
++package xymb;
++
++import java.util.ArrayList;
++import java.io.IOException;
++import net.minecraft.nbt.CompoundTag;
++import net.minecraft.nbt.ListTag;
++import net.minecraft.nbt.Tag;
++import net.minecraft.nbt.StringTag;
++import java.io.ByteArrayOutputStream;
++import java.io.DataOutputStream;
++import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
++import net.openhft.hashing.LongTupleHashFunction;
++import puregero.multipaper.ChunkKey;
++
++public class NBTDeduplicator {
++    Object2ObjectOpenHashMap<Hash128, ListTag> tags = new Object2ObjectOpenHashMap<>();
++
++    private static NBTDeduplicator instance = null;
++
++    public static NBTDeduplicator instance() {
++        if (instance == null) instance = new NBTDeduplicator();
++        return instance;
++    }
++
++    public static class Hash128 {
++        public long lower, upper;
++
++        Hash128(long[] hash) {
++            this.lower = hash[0];
++            this.upper = hash[1];
++        }
++
++        Hash128(long lower, long upper) {
++            this.lower = lower;
++            this.upper = upper;
++        }
++
++        @Override
++        public boolean equals(final Object o) {
++            if (o instanceof Hash128) {
++                Hash128 other = (Hash128)o;
++                return this.lower == other.lower && this.upper == other.upper;
++            }
++            return false;
++        }
++
++        @Override
++        public int hashCode() {
++            return (int)this.lower;
++        }
++
++        public String hashString() {
++            return String.format("%016x%016x", this.lower, this.upper);
++        }
++    }
++
++    public void addHash(String hash, ListTag tag) {
++        long lower = Long.parseLong(hash.substring(0, 16), 16);
++        long upper = Long.parseLong(hash.substring(16, 32), 16);
++
++        synchronized (tags) {
++            tags.put(new Hash128(lower, upper), tag);
++        }
++    }
++
++    public Hash128 hashNBT(ListTag tag) {
++        ByteArrayOutputStream baos = new ByteArrayOutputStream();
++        try {
++            DataOutputStream dos = new DataOutputStream(baos);
++            tag.write(dos);
++        } catch (IOException ex) {
++            System.out.println("Exception in NBT hashing: " + ex);
++            return null;
++        }
++        long[] rawHash = LongTupleHashFunction.xx128().hashBytes(baos.toByteArray());
++        if (rawHash[0] < 0) rawHash[0] *= -1; // Fucking Java doesn't support uints...
++        if (rawHash[1] < 0) rawHash[1] *= -1; // Nor 128 bit numbers
++        return new Hash128(rawHash);
++    }
++
++    public Hash128 hashFromLU(long lower, long upper) {
++        long array[] = new long[2];
++        array[0] = lower;
++        array[1] = upper;
++        return new Hash128(array);
++    }
++
++    public ListTag getFromHash(String hash) {
++        long lower = Long.parseLong(hash.substring(0, 16), 16);
++        long upper = Long.parseLong(hash.substring(16, 32), 16);
++
++        return getFromHash(lower, upper);
++    }
++
++    public boolean containsHash(String hash) {
++        long lower = Long.parseLong(hash.substring(0, 16), 16);
++        long upper = Long.parseLong(hash.substring(16, 32), 16);
++
++        return getFromHash(lower, upper) != null;
++    }
++
++    public int size() {
++        return tags.size();
++    }
++
++    public ListTag getFromHash(long lower, long upper) {
++        Hash128 hash = hashFromLU(lower, upper);
++        ListTag deduplicated;
++        synchronized (tags) {
++            deduplicated = tags.get(hash);
++        }
++        return deduplicated;
++    }
++
++    public String addAndGetHex(ListTag tag) {
++        Hash128 hash = hashNBT(tag);
++        ListTag deduplicated;
++
++        synchronized (tags) {
++            deduplicated = tags.get(hash);
++            if (deduplicated == null) {
++                tags.put(hash, tag);
++                deduplicated = tag;
++            }
++        }
++
++        return hash.hashString();
++    }
++
++    public ListTag makePalette() {
++        var list = new ListTag();
++        int i = 0;
++        synchronized (tags) {
++            for (var entry: tags.entrySet()) {
++                CompoundTag hashTag = new CompoundTag();
++                hashTag.putString("hash", entry.getKey().hashString());
++                hashTag.put("item", entry.getValue());
++                list.add(i, hashTag);
++                i++;
++            }
++        }
++        return list;
++    }
++
++    public CompoundTag reduplicateTagNoCopy(CompoundTag tag) {
++        if (tag == null) return tag;
++        if (!tag.contains("BlockEntityTag")) return tag;
++        CompoundTag blockEntityTag = tag.getCompound("BlockEntityTag");
++        if (!blockEntityTag.contains("hash")) return tag;
++
++//        System.out.println("HASH" + blockEntityTag.getString("hash"))
++        ListTag items = getFromHash(blockEntityTag.getString("hash"));
++        if (items != null) {
++            blockEntityTag.put("Items", items);
++            blockEntityTag.remove("hash");
++//            System.out.println("REDUPLICATED successfully");
++        } else {
++            System.out.println("ERROR! Unknown deduplication hash " + blockEntityTag.getString("hash"));
++        }
++        return tag;
++    }
++
++    public static void deduplicateContainersOnChunkRead(CompoundTag nbt, ChunkKey key) {
++        int regionVersion = nbt.getInt("DataVersion");
++        if (regionVersion < 3120) return; // 1.19.2
++
++        NBTDeduplicator deduplicator = NBTDeduplicator.instance();
++
++        int oldItemHashesSize = deduplicator.size();
++
++        if (nbt.contains("anarchyOptimization")) {
++            System.out.println("anarchyOptimization! " + key);
++            CompoundTag anarchyOptimization = nbt.getCompound("anarchyOptimization");
++            int version = nbt.getInt("version");
++            ListTag itemPalette = anarchyOptimization.getList("itemPalette", 10);
++            for(int i = 0; i < itemPalette.size(); ++i) {
++                CompoundTag paletteItem = itemPalette.getCompound(i);
++                String hash = paletteItem.getString("hash");
++                deduplicator.addHash(hash, paletteItem.getList("item", 10));
++            }
++        }
++
++        int deduplicatedItems = 0;
++        ListTag nbttaglist3 = nbt.getList("block_entities", 10);
++        for (int k1 = 0; k1 < nbttaglist3.size(); ++k1) {
++            CompoundTag blockEntityNbt = nbttaglist3.getCompound(k1);
++            if (blockEntityNbt.contains("Items")) {
++                ListTag items = blockEntityNbt.getList("Items", 10);
++                for(int i = 0; i < items.size(); ++i) {
++                    CompoundTag itemTag = items.getCompound(i);
++                    if (itemTag.contains("id")) {
++                        String id = itemTag.getString("id");
++                        if (id.contains("shulker_box")) {
++                            if (itemTag.contains("tag")) {
++                                CompoundTag tag = itemTag.getCompound("tag");
++                                if (tag.contains("BlockEntityTag")) {
++                                    CompoundTag blockEntityTag = tag.getCompound("BlockEntityTag");
++                                    if (blockEntityTag.contains("Items")) {
++                                        ListTag itemsInsideTag = blockEntityTag.getList("Items", 10);
++                                        String hash = deduplicator.addAndGetHex(itemsInsideTag);
++
++                                        blockEntityTag.remove("Items");
++                                        blockEntityTag.putString("hash", hash);
++                                        deduplicatedItems++;
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++        if (deduplicator.size() != oldItemHashesSize)
++            System.out.println("Item hashes " + deduplicator.size());
++        if (deduplicatedItems > 0 && !nbt.contains("anarchyOptimization")) {
++            DeduplicatorUpdateManager.markForUpdate(key);
++        }
++    }
++
++    public static void deduplicateContainersOnWrite(CompoundTag nbt) {
++        if (nbt == null) return;
++//        System.out.println("Deduplicate!");
++        int hash = 0;
++        int item = 0;
++        int both = 0;
++        NBTDeduplicator globalDeduplicator = NBTDeduplicator.instance();
++        NBTDeduplicator deduplicator = new NBTDeduplicator();
++
++        ListTag nbttaglist3 = nbt.getList("block_entities", 10);
++        for (int k1 = 0; k1 < nbttaglist3.size(); ++k1) {
++            CompoundTag blockEntityNbt = nbttaglist3.getCompound(k1);
++            if (blockEntityNbt.contains("Items")) {
++                ListTag items = blockEntityNbt.getList("Items", 10);
++                for(int i = 0; i < items.size(); ++i) {
++                    CompoundTag itemTag = items.getCompound(i);
++                    if (itemTag.contains("id")) {
++                        String id = itemTag.getString("id");
++                        if (id.contains("shulker_box")) {
++                            if (itemTag.contains("tag")) {
++                                CompoundTag tag = itemTag.getCompound("tag");
++                                if (tag.contains("BlockEntityTag")) {
++                                    CompoundTag blockEntityTag = tag.getCompound("BlockEntityTag");
++                                    boolean hasHash = false;
++                                    if (blockEntityTag.contains("hash")) {
++                                        if (!deduplicator.containsHash(blockEntityTag.getString("hash"))) {
++                                            deduplicator.addHash(blockEntityTag.getString("hash"), globalDeduplicator.getFromHash(blockEntityTag.getString("hash")));
++                                        }
++                                        hasHash = true;
++                                        hash++;
++                                    }
++                                    if (blockEntityTag.contains("Items")) {
++                                        String hashTag = deduplicator.addAndGetHex(blockEntityTag.getList("Items", 10));
++                                        blockEntityTag.remove("Items");
++                                        blockEntityTag.putString("hash", hashTag);
++                                        if (hasHash) both++;
++                                        item++;
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        if (hash > 0 || item > 0) {
++            CompoundTag anarchyOptimization = new CompoundTag();
++            anarchyOptimization.putInt("version", 1);
++            anarchyOptimization.put("itemPalette", deduplicator.makePalette());
++            nbt.put("anarchyOptimization", anarchyOptimization);
++        }
++
++        if (hash > 0 || item > 0 || both > 0) {
++//            System.out.println("Deduplication report - " + hash + " " + item + " " + both);
++        }
++    }
++
++    // TODO: Reverting to duplicated
++
++}

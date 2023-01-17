@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 14 Jan 2023 23:43:01 +0100
+Subject: [PATCH] Don't crash if another server crashes.
+
+
+diff --git a/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java b/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java
+index 99b7264686793ee5af8797c8c3d7dc0e6e6f0e8d..fdbfbfdb3907b69e92abe87879e0fef12fa84066 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java
++++ b/src/main/java/puregero/multipaper/MultiPaperChunkHandler.java
+@@ -120,7 +120,9 @@ public class MultiPaperChunkHandler {
+         if (blockUpdateChunk == null) { // Don't broadcast the update to other servers if we're handling an update
+             for (ExternalServer externalServer : chunk.externalSubscribers) {
+                 if (!externalServer.isMe()) {
+-                    externalServer.getConnection().send(new SendUpdatePacket(chunkHolder.getWorld().uuid, packet));
++                    try {
++                        externalServer.getConnection().send(new SendUpdatePacket(chunkHolder.getWorld().uuid, packet));
++                    } catch (java.lang.NullPointerException ex) {}
+                 }
+             }
+         }

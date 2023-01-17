@@ -5,7 +5,7 @@ Subject: [PATCH] Packet limiter for handleContainerClick.
 
 
 diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index df47f9a5a77db937506698a41111cbed33797580..62f06a7bbeb59e892caf8e34b84a9d65d6aac91b 100644
+index 4ce04de910698f993b2e0907869273de448725e6..d45ed480f870550df020e36c27527ad1ccc5c2ce 100644
 --- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -1983,17 +1983,17 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic

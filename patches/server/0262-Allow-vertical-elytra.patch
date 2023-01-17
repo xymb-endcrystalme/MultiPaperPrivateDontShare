@@ -5,7 +5,7 @@ Subject: [PATCH] Allow vertical elytra.
 
 
 diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 62f06a7bbeb59e892caf8e34b84a9d65d6aac91b..deef362850115281f7299cd5986f8d85c86739ae 100644
+index d45ed480f870550df020e36c27527ad1ccc5c2ce..dd4bf3763e794b2756bfba29f993898cd4f64174 100644
 --- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 @@ -1676,7 +1676,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic

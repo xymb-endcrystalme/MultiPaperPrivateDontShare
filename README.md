@@ -1,3 +1,17 @@
+# BE CAREFUL! This MultiPaper is incompatible with vanilla!
+
+**THINGS TO BE WARY OF:**
+
+Linear region file format. It only supports `.linear`, won't work with `.mca`.
+
+Stash deduplication. This version makes giant dupe stashes possible and lagless (it would even handle a 100k dub monster). However, it writes shulker boxes in a format incompatible with vanilla.
+
+If you try to open a deduplicated chunk under vanilla, all shulker contents will be lost.
+
+I didn't make a tool to convert deduplicated chunks back, so be warned.
+
+**Be careful! Here be dragons!**
+
 # MultiPaper
 
 [![Discord](https://img.shields.io/discord/937309618743427113.svg?color=738ad6&label=Join%20the%20Discord%20server&logo=discord&logoColor=ffffff)](https://discord.gg/dN3WCZkSRV)
