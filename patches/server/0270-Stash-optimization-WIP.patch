@@ -16,52 +16,6 @@ index ddaac25a3274a5973260cc37bb001af6afb08ac2..29ced8b41929e090167e76bf840a9b2f
  
      implementation("com.github.technove:AIR:fe3dbb4420") // Airplane - config
      implementation("com.github.technove:Flare:2c4a2114a0") // Airplane - flare
-diff --git a/src/main/java/net/minecraft/network/FriendlyByteBuf.java b/src/main/java/net/minecraft/network/FriendlyByteBuf.java
-index 46d89d3dc9d607ca171db3d819b6c4d6d420efc9..ec6671cc860258c6f5e23dfad4c420b1e32c5802 100644
---- a/src/main/java/net/minecraft/network/FriendlyByteBuf.java
-+++ b/src/main/java/net/minecraft/network/FriendlyByteBuf.java
-@@ -567,7 +567,8 @@ public class FriendlyByteBuf extends ByteBuf {
-         }
-     }
- 
--    public FriendlyByteBuf writeItem(ItemStack stack) {
-+    // Xymb start
-+    public FriendlyByteBuf writeItemDeduplicated(ItemStack stack) {
-         if (stack.isEmpty() || stack.getItem() == null) { // CraftBukkit - NPE fix itemstack.getItem()
-             this.writeBoolean(false);
-         } else {
-@@ -577,7 +578,31 @@ public class FriendlyByteBuf extends ByteBuf {
-             this.writeId(Registry.ITEM, item);
-             this.writeByte(stack.getCount());
-             CompoundTag nbttagcompound = null;
-+            if (item.canBeDepleted() || item.shouldOverrideMultiplayerNbt()) {
-+                // Spigot start - filter
-+                // stack = stack.copy(); // MultiPaper - seems unnecessary
-+                // CraftItemStack.setItemMeta(stack, CraftItemStack.getItemMeta(stack)); // Paper - This is no longer with raw NBT being handled in metadata
-+                // Spigot end
-+                nbttagcompound = stack.getTag();
-+            }
-+
-+            this.writeNbt(nbttagcompound);
-+        }
-+
-+        return this;
-+    }
-+    // Xymb end
-+
-+    public FriendlyByteBuf writeItem(ItemStack stack) {
-+        if (stack.isEmpty() || stack.getItem() == null) { // CraftBukkit - NPE fix itemstack.getItem()
-+            this.writeBoolean(false);
-+        } else {
-+            this.writeBoolean(true);
-+            Item item = stack.getItem();
- 
-+            this.writeId(Registry.ITEM, item);
-+            this.writeByte(stack.getCount());
-+            CompoundTag nbttagcompound = null;
-             if (item.canBeDepleted() || item.shouldOverrideMultiplayerNbt()) {
-                 // Spigot start - filter
-                 // stack = stack.copy(); // MultiPaper - seems unnecessary
 diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 index dd4bf3763e794b2756bfba29f993898cd4f64174..deef362850115281f7299cd5986f8d85c86739ae 100644
 --- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
@@ -75,199 +29,30 @@ index dd4bf3763e794b2756bfba29f993898cd4f64174..deef362850115281f7299cd5986f8d85
          handleUseItemOn_totalTime += System.nanoTime() - start;
      }
  
-diff --git a/src/main/java/net/minecraft/world/ContainerHelper.java b/src/main/java/net/minecraft/world/ContainerHelper.java
-index 0816f63fc019ed94566da9ea5266e991d4884485..9da0b070ec6ccda84cf999ae1107915b5b095e2d 100644
---- a/src/main/java/net/minecraft/world/ContainerHelper.java
-+++ b/src/main/java/net/minecraft/world/ContainerHelper.java
-@@ -6,6 +6,7 @@ import net.minecraft.core.NonNullList;
- import net.minecraft.nbt.CompoundTag;
- import net.minecraft.nbt.ListTag;
- import net.minecraft.world.item.ItemStack;
-+import xymb.NBTDeduplicator;
- 
- public class ContainerHelper {
-     public static ItemStack removeItem(List<ItemStack> stacks, int slot, int amount) {
-@@ -41,16 +42,17 @@ public class ContainerHelper {
-     }
- 
-     public static void loadAllItems(CompoundTag nbt, NonNullList<ItemStack> stacks) {
--        ListTag listTag = nbt.getList("Items", 10);
--
--        for(int i = 0; i < listTag.size(); ++i) {
--            CompoundTag compoundTag = listTag.getCompound(i);
--            int j = compoundTag.getByte("Slot") & 255;
--            if (j >= 0 && j < stacks.size()) {
--                stacks.set(j, ItemStack.ofRapidUnsafe(compoundTag));
-+        if (nbt.contains("Items")) { // MultiPaper
-+            ListTag listTag = nbt.getList("Items", 10);
-+
-+            for(int i = 0; i < listTag.size(); ++i) {
-+                CompoundTag compoundTag = listTag.getCompound(i);
-+                int j = compoundTag.getByte("Slot") & 255;
-+                if (j >= 0 && j < stacks.size()) {
-+                    stacks.set(j, ItemStack.ofRapidUnsafe(compoundTag));
-+                }
-             }
-         }
--
-     }
- 
-     public static int clearOrCountMatchingItems(Container inventory, Predicate<ItemStack> shouldRemove, int maxCount, boolean dryRun) {
 diff --git a/src/main/java/net/minecraft/world/item/ItemStack.java b/src/main/java/net/minecraft/world/item/ItemStack.java
-index 8f4b029b67d3c33f5ae64f1974772496b2a21f21..598dfabee3e26a0fbbc9bcf1fb3d3f6176e082d3 100644
+index 8f4b029b67d3c33f5ae64f1974772496b2a21f21..5488c4be732d04de70d043439e413b57868f441c 100644
 --- a/src/main/java/net/minecraft/world/item/ItemStack.java
 +++ b/src/main/java/net/minecraft/world/item/ItemStack.java
-@@ -287,18 +287,19 @@ public final class ItemStack {
-             this.processText(); // Paper
-             this.getItem().verifyTagAfterLoad(this.tag);
-         }
--
-         if (this.getItem().canBeDepleted()) {
-             this.setDamageValue(this.getDamageValue());
-         }
- 
-         markDirty(); // MultiPaper
-+//        this.reduplicate();
-     }
- 
-     private ItemStack(CompoundTag nbt, boolean rapidUnsafe) { // MultiPaper
-         this.load(nbt, rapidUnsafe);
-         // CraftBukkit end
-         this.updateEmptyCacheFlag();
-+//        this.reduplicate();
-     }
- 
-     public static ItemStack of(CompoundTag nbt) {
-@@ -319,6 +320,15 @@ public final class ItemStack {
-             return ItemStack.EMPTY;
-         }
-     }
-+
-+    public static ItemStack ofRapidUnsafe(CompoundTag nbt, int count, CompoundTag tag) {
-+        try {
-+            return new ItemStack(nbt, true);
-+        } catch (RuntimeException runtimeexception) {
-+            ItemStack.LOGGER.debug("Tried to load invalid item: {}", nbt, runtimeexception);
-+            return ItemStack.EMPTY;
-+        }
-+    }
-     // MultiPaper end
- 
-     public boolean isEmpty() {
-@@ -546,6 +556,7 @@ public final class ItemStack {
-         nbt.putByte("Count", (byte) this.count);
-         if (this.tag != null) {
-             nbt.put("tag", this.tag.copy());
-+//            nbt = xymb.NBTDeduplicator.instance().reduplicateItemStack(nbt);
-         }
- 
-         return nbt;
-@@ -563,6 +574,50 @@ public final class ItemStack {
- 
-         return nbt;
-     }
-+
-+    public CompoundTag simplifiedTag;
-+
-+    public static CompoundTag staticCreateSimplifiedTag(CompoundTag nbt) {
-+        if (nbt == null) return null;
-+        CompoundTag simplifiedTag = nbt.copy();
-+        if (simplifiedTag.contains("tag")) {
-+            CompoundTag tag = simplifiedTag.getCompound("tag");
-+            if (tag.contains("BlockEntityTag")) {
-+                CompoundTag blockEntityTag = tag.getCompound("BlockEntityTag");
-+                if (blockEntityTag.contains("Items")) {
-+                    blockEntityTag.remove("Items");
-+                }
-+            }
-+        }
-+        return simplifiedTag;
-+    }
-+
-+    private CompoundTag createSimplifiedTag() {
-+        if (this.tag == null) return null;
-+        CompoundTag simplifiedTag = this.tag.copy();
-+        if (simplifiedTag.contains("BlockEntityTag")) {
-+            CompoundTag blockEntityTag = simplifiedTag.getCompound("BlockEntityTag");
-+            if (blockEntityTag.contains("Items")) {
-+//                CompoundTag items = blockEntityTag.getCompound("Items");
-+                blockEntityTag.remove("Items");
-+            }
-+        }
-+        this.simplifiedTag = simplifiedTag;
-+        return this.simplifiedTag;
-+    }
-+
-+    public CompoundTag saveSimplifiedForMultiPaper(CompoundTag nbt) {
-+        ResourceLocation minecraftkey = Registry.ITEM.getKey(this.getItem());
-+
-+        nbt.putString("id", minecraftkey == null ? "minecraft:air" : minecraftkey.toString());
-+        nbt.putByte("Count", (byte) this.count);
-+        if (this.simplifiedTag == null) this.simplifiedTag = createSimplifiedTag();
-+        if (this.simplifiedTag != null) {
-+            nbt.put("tag", this.simplifiedTag);
-+        }
-+
-+        return nbt;
-+    }
-     // MultiPaper end
- 
-     public int getMaxStackSize() {
-@@ -729,6 +784,8 @@ public final class ItemStack {
- 
-     public ItemStack copy() { return cloneItemStack(false); } // Paper
-     public ItemStack cloneItemStack(boolean origItem) { // Paper
-+//        this.reduplicate();
-+
-         if (!origItem && this.isEmpty()) { // Paper
-             return ItemStack.EMPTY;
-         } else {
-@@ -737,6 +794,10 @@ public final class ItemStack {
+@@ -737,6 +737,7 @@ public final class ItemStack {
              itemstack.setPopTime(this.getPopTime());
              if (this.tag != null) {
                  itemstack.tag = this.tag.copy();
-+//                System.out.println("TAG " + itemstack.tag);
-+//                itemstack.tag = xymb.NBTDeduplicator.instance().reduplicateTagNoCopy(itemstack.tag);
-+//                System.out.println("TAG2 " + itemstack.tag);
 +                itemstack.reduplicate();
              }
  
              return itemstack;
-@@ -745,16 +806,12 @@ public final class ItemStack {
+@@ -757,6 +758,11 @@ public final class ItemStack {
+         }
+     }
  
-     // MultiPaper start
-     public ItemStack rapidCloneItemStack(boolean origItem) {
--        if (!origItem && this.isEmpty()) {
--            return ItemStack.EMPTY;
--        } else {
--            ItemStack itemstack = new ItemStack(origItem ? this.item : this.getItem(), this.count);
--
--            itemstack.setPopTime(this.getPopTime());
--            itemstack.tag = this.tag;
-+        return cloneItemStack(origItem);
-+    }
- 
--            return itemstack;
--        }
 +    private void reduplicate() {
 +        if (this.tag != null)
 +            this.tag = xymb.NBTDeduplicator.instance().reduplicateTagNoCopy(this.tag);
-     }
- 
++    }
++
      public static boolean rapidItemStackMatch(ItemStack left, ItemStack right) {
-diff --git a/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java b/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
-index 137bdf1168b9e1d00164471e4e79f56c000c2696..bd6114c2c6fe1586c9bf9aae09b17d6c37951c6a 100644
---- a/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
-+++ b/src/main/java/net/minecraft/world/level/block/entity/ShulkerBoxBlockEntity.java
-@@ -243,7 +243,7 @@ public class ShulkerBoxBlockEntity extends RandomizableContainerBlockEntity impl
- 
-     public void loadFromTag(CompoundTag nbt) {
-         this.itemStacks = NonNullList.withSize(this.getContainerSize(), ItemStack.EMPTY);
--        if (!this.tryLoadLootTable(nbt) && nbt.contains("Items", 9)) {
-+        if (!this.tryLoadLootTable(nbt) && (nbt.contains("Items", 9))) {
-             ContainerHelper.loadAllItems(nbt, this.itemStacks);
-         }
- 
+         if(!left.isEmpty() && !right.isEmpty()) {
+             if(left.getItem() instanceof BlockItem && right.getItem() instanceof BlockItem) {
 diff --git a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
 index abcd28498cfcf3fe6936f01f8e2a5a5e04118572..356f9b255f945b70ba2cf3dfd1dc3a215451a54b 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
@@ -285,26 +70,6 @@ index abcd28498cfcf3fe6936f01f8e2a5a5e04118572..356f9b255f945b70ba2cf3dfd1dc3a21
      }
      // CraftBukkit end
  
-diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
-index 9b50c97a42512fe8bf758d2bb50e2dc9652ffe51..bbb58b2755724a095e3476f75b3eff34f5755cc2 100644
---- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
-+++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
-@@ -795,6 +795,7 @@ public class ChunkSerializer {
-         ListTag nbttaglist1 = ChunkSerializer.getListOfCompoundsOrNull(nbt, "block_entities");
- 
-         return nbttaglist == null && nbttaglist1 == null ? null : (chunk) -> {
-+            long start = System.nanoTime();
-             if (nbttaglist != null) {
-                 world.addLegacyChunkEntities(EntityType.loadEntitiesRecursive(nbttaglist, world));
-             }
-@@ -821,6 +822,7 @@ public class ChunkSerializer {
-             chunk.entitiesToLoad = null;
-             chunk.blockEntitiesToLoad = null;
-             // MultiPaper end
-+//            System.out.println((System.nanoTime() - start) / 1000000.);
-         };
-     }
- 
 diff --git a/src/main/java/puregero/multipaper/ChunkKey.java b/src/main/java/puregero/multipaper/ChunkKey.java
 index 928fe46b5061ff6a1acbec61eec698756e8ac124..a66d01e292e5cc4008b22c171ec09642da9939cc 100644
 --- a/src/main/java/puregero/multipaper/ChunkKey.java
@@ -320,7 +85,7 @@ index 928fe46b5061ff6a1acbec61eec698756e8ac124..a66d01e292e5cc4008b22c171ec09642
  }
  
 diff --git a/src/main/java/puregero/multipaper/MultiPaper.java b/src/main/java/puregero/multipaper/MultiPaper.java
-index 608b28aa26c119f5b2b778ad07e3d7ff7b67a53a..115e52bc7f4383ea1bc9312b40819080b4347964 100644
+index 608b28aa26c119f5b2b778ad07e3d7ff7b67a53a..ef36230fc353bb710aa0df8c0e6b6ca18b759fe5 100644
 --- a/src/main/java/puregero/multipaper/MultiPaper.java
 +++ b/src/main/java/puregero/multipaper/MultiPaper.java
 @@ -423,8 +423,12 @@ public class MultiPaper {
@@ -346,7 +111,7 @@ index 608b28aa26c119f5b2b778ad07e3d7ff7b67a53a..115e52bc7f4383ea1bc9312b40819080
 +        xymb.NBTDeduplicator.deduplicateContainersOnWrite(compoundTag);
          writeRegionFile(world, path, cx, cz, nbtToBytes(compoundTag));
 +        if (((System.nanoTime() - start) / 1000000.) > 50)
-+            System.out.println("WRITE " + ((System.nanoTime() - start) / 1000000.));
++            System.out.println("WRITE_JUMBO_CHUNK " + ((System.nanoTime() - start) / 1000000.) + " " + world + " " + cx + " " + cz);
      }
  
      public static CompoundTag readLevel(String world) throws IOException {
@@ -454,7 +219,7 @@ index 0000000000000000000000000000000000000000..ea3bf4cf09db175ee205fd706e745fcd
 +}
 diff --git a/src/main/java/xymb/NBTDeduplicator.java b/src/main/java/xymb/NBTDeduplicator.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..851709328505f85a9e85729986632a67b054e49e
+index 0000000000000000000000000000000000000000..a2b2627ed2c00d03619b262cf207a64f8fa30efa
 --- /dev/null
 +++ b/src/main/java/xymb/NBTDeduplicator.java
 @@ -0,0 +1,280 @@
@@ -629,7 +394,7 @@ index 0000000000000000000000000000000000000000..851709328505f85a9e85729986632a67
 +        int oldItemHashesSize = deduplicator.size();
 +
 +        if (nbt.contains("anarchyOptimization")) {
-+            System.out.println("anarchyOptimization! " + key);
++//            System.out.println("anarchyOptimization! " + key);
 +            CompoundTag anarchyOptimization = nbt.getCompound("anarchyOptimization");
 +            int version = nbt.getInt("version");
 +            ListTag itemPalette = anarchyOptimization.getList("itemPalette", 10);
