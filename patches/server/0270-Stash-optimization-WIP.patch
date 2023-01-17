@@ -163,17 +163,20 @@ index 58ba5b252b48ba176b09506086932af0b3438796..fc56240b6b90cfa849ecb8357fece9f3
              }
          });
 diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
-index 7b6f86f4a314c4628071bdf54b5aa014b26c8d34..3ef36961e41deec3889c9c9b282da7b56020de17 100644
+index 7b6f86f4a314c4628071bdf54b5aa014b26c8d34..617f5f6cddb6ebd176bb5b3107f008ea2a194c4e 100644
 --- a/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
 +++ b/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
-@@ -42,6 +42,7 @@ public class SendChunkPacket extends ExternalServerPacket {
+@@ -42,8 +42,9 @@ public class SendChunkPacket extends ExternalServerPacket {
                  data = new byte[0];
              } else {
                  long startTime = System.nanoTime();
 +                xymb.NBTDeduplicator.deduplicateContainersOnWrite(tag);
                  data = MultiPaper.nbtToBytes(tag);
-                 if (System.nanoTime() - startTime > 10000000) {
+-                if (System.nanoTime() - startTime > 10000000) {
++                if (System.nanoTime() - startTime > 50000000) {
                      System.out.println("SEND_CHUNK_JUMBO_PACKET " + ((System.nanoTime() - startTime) / 1000000.) + " " + world + " " + cx + " " + cz);
+                 }
+             }
 @@ -91,6 +92,7 @@ public class SendChunkPacket extends ExternalServerPacket {
                  }
  
