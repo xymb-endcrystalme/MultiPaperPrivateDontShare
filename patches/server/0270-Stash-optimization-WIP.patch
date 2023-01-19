@@ -30,7 +30,7 @@ index dd4bf3763e794b2756bfba29f993898cd4f64174..deef362850115281f7299cd5986f8d85
      }
  
 diff --git a/src/main/java/net/minecraft/world/item/ItemStack.java b/src/main/java/net/minecraft/world/item/ItemStack.java
-index 8f4b029b67d3c33f5ae64f1974772496b2a21f21..0dcecdbe73a5c6ea80d7eed74d638a1ecd3db636 100644
+index 8f4b029b67d3c33f5ae64f1974772496b2a21f21..ef3c6bde5a6607e58bd7622015628d944e886bad 100644
 --- a/src/main/java/net/minecraft/world/item/ItemStack.java
 +++ b/src/main/java/net/minecraft/world/item/ItemStack.java
 @@ -737,6 +737,7 @@ public final class ItemStack {
@@ -41,18 +41,29 @@ index 8f4b029b67d3c33f5ae64f1974772496b2a21f21..0dcecdbe73a5c6ea80d7eed74d638a1e
              }
  
              return itemstack;
-@@ -757,6 +758,11 @@ public final class ItemStack {
-         }
-     }
+@@ -745,6 +746,8 @@ public final class ItemStack {
  
+     // MultiPaper start
+     public ItemStack rapidCloneItemStack(boolean origItem) {
++        return cloneItemStack(origItem);
++        /*
+         if (!origItem && this.isEmpty()) {
+             return ItemStack.EMPTY;
+         } else {
+@@ -754,7 +757,12 @@ public final class ItemStack {
+             itemstack.tag = this.tag;
+ 
+             return itemstack;
+-        }
++        }*/
++    }
++
 +    public void reduplicate() {
 +        if (this.tag != null)
 +            this.tag = xymb.NBTDeduplicator.instance().reduplicateTagNoCopy(this.tag);
-+    }
-+
+     }
+ 
      public static boolean rapidItemStackMatch(ItemStack left, ItemStack right) {
-         if(!left.isEmpty() && !right.isEmpty()) {
-             if(left.getItem() instanceof BlockItem && right.getItem() instanceof BlockItem) {
 diff --git a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
 index abcd28498cfcf3fe6936f01f8e2a5a5e04118572..356f9b255f945b70ba2cf3dfd1dc3a215451a54b 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
@@ -83,14 +94,22 @@ index 30ac442049088200e9ab77a561c59cbc58aaa28f..7cc9d723787a5b981db94702e3f187cb
          }
  
 diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemStack.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemStack.java
-index 03b4f18000d455e48044eb7a15cd667acef5f14d..5f85a0258e8a9558a7d7551c8e39ee7a9f5e834a 100644
+index 03b4f18000d455e48044eb7a15cd667acef5f14d..e9b100e8dbd772c31b54c65ccf6dec11a6d6c62e 100644
 --- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemStack.java
 +++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftItemStack.java
-@@ -65,6 +65,7 @@ public final class CraftItemStack extends ItemStack {
+@@ -57,6 +57,7 @@ public final class CraftItemStack extends ItemStack {
+         if (original.isEmpty()) {
+             return new ItemStack(Material.AIR);
+         }
++        if (original != null) original.reduplicate(); // Xymb
+         ItemStack stack = new ItemStack(CraftMagicNumbers.getMaterial(original.getItem()), original.getCount());
+         if (CraftItemStack.hasItemMeta(original)) {
+             stack.setItemMeta(CraftItemStack.getItemMeta(original));
+@@ -65,6 +66,7 @@ public final class CraftItemStack extends ItemStack {
      }
  
      public static CraftItemStack asCraftMirror(net.minecraft.world.item.ItemStack original) {
-+        original.reduplicate(); // Xymb
++        if (original != null) original.reduplicate(); // Xymb
          return new CraftItemStack((original == null || original.isEmpty()) ? null : original);
      }
  
@@ -187,13 +206,14 @@ index 58ba5b252b48ba176b09506086932af0b3438796..fc56240b6b90cfa849ecb8357fece9f3
              }
          });
 diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
-index 7b6f86f4a314c4628071bdf54b5aa014b26c8d34..617f5f6cddb6ebd176bb5b3107f008ea2a194c4e 100644
+index 7b6f86f4a314c4628071bdf54b5aa014b26c8d34..5edc90145a9aea2bb4e5f4dba403fc3320940d8d 100644
 --- a/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
 +++ b/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
-@@ -42,8 +42,9 @@ public class SendChunkPacket extends ExternalServerPacket {
+@@ -42,8 +42,10 @@ public class SendChunkPacket extends ExternalServerPacket {
                  data = new byte[0];
              } else {
                  long startTime = System.nanoTime();
++                tag = tag.copy();
 +                xymb.NBTDeduplicator.deduplicateContainersOnWrite(tag);
                  data = MultiPaper.nbtToBytes(tag);
 -                if (System.nanoTime() - startTime > 10000000) {
@@ -201,11 +221,16 @@ index 7b6f86f4a314c4628071bdf54b5aa014b26c8d34..617f5f6cddb6ebd176bb5b3107f008ea
                      System.out.println("SEND_CHUNK_JUMBO_PACKET " + ((System.nanoTime() - startTime) / 1000000.) + " " + world + " " + cx + " " + cz);
                  }
              }
-@@ -91,6 +92,7 @@ public class SendChunkPacket extends ExternalServerPacket {
+@@ -90,7 +92,12 @@ public class SendChunkPacket extends ExternalServerPacket {
+                     return;
                  }
  
++                long startTime = System.nanoTime();
                  CompoundTag tag = MultiPaper.nbtFromBytes(data);
 +                xymb.NBTDeduplicator.deduplicateContainersOnChunkRead(tag, new ChunkKey(world, cx, cz));
++                if (System.nanoTime() - startTime > 50000000) {
++                    System.out.println("READ_CHUNK_JUMBO_PACKET " + ((System.nanoTime() - startTime) / 1000000.) + " " + world + " " + cx + " " + cz);
++                }
                  CraftWorld craftWorld = ((CraftWorld) Bukkit.getWorld(world));
                  ServerLevel level = craftWorld != null ? craftWorld.getHandle() : null;
                  ChunkHolder holder = level != null ? MultiPaper.getChunkHolder(world, cx, cz) : null;
@@ -246,10 +271,10 @@ index 0000000000000000000000000000000000000000..ea3bf4cf09db175ee205fd706e745fcd
 +}
 diff --git a/src/main/java/xymb/NBTDeduplicator.java b/src/main/java/xymb/NBTDeduplicator.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..a2b2627ed2c00d03619b262cf207a64f8fa30efa
+index 0000000000000000000000000000000000000000..8d0eac1e2249ff2e27d2119a44fe26fea2524dce
 --- /dev/null
 +++ b/src/main/java/xymb/NBTDeduplicator.java
-@@ -0,0 +1,280 @@
+@@ -0,0 +1,296 @@
 +package xymb;
 +
 +import java.util.ArrayList;
@@ -311,6 +336,9 @@ index 0000000000000000000000000000000000000000..a2b2627ed2c00d03619b262cf207a64f
 +        long upper = Long.parseLong(hash.substring(16, 32), 16);
 +
 +        synchronized (tags) {
++//            if (!tags.containsKey(new Hash128(lower, upper))) {
++//                System.out.println("Adding hash " + hash);
++//            }
 +            tags.put(new Hash128(lower, upper), tag);
 +        }
 +    }
@@ -347,8 +375,12 @@ index 0000000000000000000000000000000000000000..a2b2627ed2c00d03619b262cf207a64f
 +    public boolean containsHash(String hash) {
 +        long lower = Long.parseLong(hash.substring(0, 16), 16);
 +        long upper = Long.parseLong(hash.substring(16, 32), 16);
-+
-+        return getFromHash(lower, upper) != null;
++        Hash128 hash128 = hashFromLU(lower, upper);
++        ListTag deduplicated;
++        synchronized (tags) {
++            deduplicated = tags.get(hash128);
++        }
++        return deduplicated != null;
 +    }
 +
 +    public int size() {
@@ -361,7 +393,8 @@ index 0000000000000000000000000000000000000000..a2b2627ed2c00d03619b262cf207a64f
 +        synchronized (tags) {
 +            deduplicated = tags.get(hash);
 +        }
-+        return deduplicated;
++        if (deduplicated == null) return deduplicated;
++        return deduplicated.copy();
 +    }
 +
 +    public String addAndGetHex(ListTag tag) {
@@ -371,8 +404,7 @@ index 0000000000000000000000000000000000000000..a2b2627ed2c00d03619b262cf207a64f
 +        synchronized (tags) {
 +            deduplicated = tags.get(hash);
 +            if (deduplicated == null) {
-+                tags.put(hash, tag);
-+                deduplicated = tag;
++                tags.put(hash, tag.copy());
 +            }
 +        }
 +
@@ -403,11 +435,16 @@ index 0000000000000000000000000000000000000000..a2b2627ed2c00d03619b262cf207a64f
 +//        System.out.println("HASH" + blockEntityTag.getString("hash"))
 +        ListTag items = getFromHash(blockEntityTag.getString("hash"));
 +        if (items != null) {
-+            blockEntityTag.put("Items", items);
-+            blockEntityTag.remove("hash");
++            CompoundTag newBlockEntityTag = tag.getCompound("BlockEntityTag").copy();
++            newBlockEntityTag.put("Items", items);
++            newBlockEntityTag.remove("hash");
++            tag.put("BlockEntityTag", newBlockEntityTag);
 +//            System.out.println("REDUPLICATED successfully");
 +        } else {
-+            System.out.println("ERROR! Unknown deduplication hash " + blockEntityTag.getString("hash"));
++            Thread.dumpStack();
++            System.out.println("ERROR! Unknown deduplication hash " + blockEntityTag.getString("hash") + " " + blockEntityTag.contains("Items"));
++            if (blockEntityTag.contains("Items"))
++                System.out.println(blockEntityTag.get("Items"));
 +        }
 +        return tag;
 +    }
@@ -492,6 +529,9 @@ index 0000000000000000000000000000000000000000..a2b2627ed2c00d03619b262cf207a64f
 +                                CompoundTag tag = itemTag.getCompound("tag");
 +                                if (tag.contains("BlockEntityTag")) {
 +                                    CompoundTag blockEntityTag = tag.getCompound("BlockEntityTag");
++                                    CompoundTag newBlockEntityTag = blockEntityTag.copy();
++                                    tag.put("BlockEntityTag", newBlockEntityTag);
++                                    blockEntityTag = newBlockEntityTag;
 +                                    boolean hasHash = false;
 +                                    if (blockEntityTag.contains("hash")) {
 +                                        if (!deduplicator.containsHash(blockEntityTag.getString("hash"))) {
@@ -502,6 +542,7 @@ index 0000000000000000000000000000000000000000..a2b2627ed2c00d03619b262cf207a64f
 +                                    }
 +                                    if (blockEntityTag.contains("Items")) {
 +                                        String hashTag = deduplicator.addAndGetHex(blockEntityTag.getList("Items", 10));
++                                        globalDeduplicator.addHash(hashTag, blockEntityTag.getList("Items", 10));
 +                                        blockEntityTag.remove("Items");
 +                                        blockEntityTag.putString("hash", hashTag);
 +                                        if (hasHash) both++;
@@ -523,7 +564,7 @@ index 0000000000000000000000000000000000000000..a2b2627ed2c00d03619b262cf207a64f
 +        }
 +
 +        if (hash > 0 || item > 0 || both > 0) {
-+//            System.out.println("Deduplication report - " + hash + " " + item + " " + both);
++            System.out.println("Deduplication report - " + hash + " " + item + " " + both);
 +        }
 +    }
 +
