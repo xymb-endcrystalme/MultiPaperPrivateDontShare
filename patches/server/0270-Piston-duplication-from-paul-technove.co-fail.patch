@@ -1,0 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 21 Jan 2023 06:33:43 +0100
+Subject: [PATCH] Piston duplication from paul@technove.co fail
+
+
+diff --git a/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java b/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+index 3964c6ca0b7ba243beb666ead03df5272d06b879..fd1bda6b71a0d03f8494fc6354d7bbffbcde0fd1 100644
+--- a/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java
++++ b/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java
+@@ -451,7 +451,7 @@ public class PistonBaseBlock extends DirectionalBlock {
+                     map.replace(oldPos, iblockdata1);
+                 }
+ 
+-                PistonMoveBlockStartPacket.startBlockMove((ServerLevel) world, oldPos, blockposition3, dir, retract);
++                PistonMoveBlockStartPacket.startBlockMove((ServerLevel) world, oldPos, blockposition3, allowDesync ? list1.get(k) : iblockdata1, dir, retract);
+                 // world.setBlockEntity(MovingPistonBlock.newMovingBlockEntity(blockposition3, iblockdata2, allowDesync ? list1.get(k) : iblockdata1, dir, retract, false)); // MultiPaper - handled ourselves
+                 if (!allowDesync) {
+                     // world.setBlock(oldPos, Blocks.AIR.defaultBlockState(), 2 | 4 | 16 | 1024); // set air to prevent later physics updates from seeing this block // MultiPaper - handled ourselves
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/PistonMoveBlockStartPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/PistonMoveBlockStartPacket.java
+index 7f4bc2a3d2483a71fe565d15a51b10117547eae3..a4dbaf8ae0d63bfc436abd0d4edef21751ec6e95 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/PistonMoveBlockStartPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/PistonMoveBlockStartPacket.java
+@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
+ import net.minecraft.core.Direction;
+ import net.minecraft.network.FriendlyByteBuf;
+ import net.minecraft.server.level.ServerLevel;
++import net.minecraft.world.level.block.Block;
+ import net.minecraft.world.level.block.Blocks;
+ import net.minecraft.world.level.block.piston.MovingPistonBlock;
+ import net.minecraft.world.level.block.piston.PistonBaseBlock;
+@@ -23,11 +24,11 @@ public class PistonMoveBlockStartPacket extends ExternalServerPacket {
+ 
+     private static final Logger LOGGER = LogManager.getLogger(PistonMoveBlockStartPacket.class.getSimpleName());
+ 
+-    public static void startBlockMove(ServerLevel level, BlockPos from, BlockPos to, Direction pistonDir, boolean retract) {
+-        startBlockMove(level, from, to, pistonDir, retract, false);
++    public static void startBlockMove(ServerLevel level, BlockPos from, BlockPos to, BlockState pushedBlock, Direction pistonDir, boolean retract) {
++        startBlockMove(level, from, to, pushedBlock, pistonDir, retract, false);
+     }
+ 
+-    public static void startBlockMove(ServerLevel level, BlockPos from, BlockPos to, Direction pistonDir, boolean retract, boolean isExternal) {
++    public static void startBlockMove(ServerLevel level, BlockPos from, BlockPos to, BlockState pushedBlock, Direction pistonDir, boolean retract, boolean isExternal) {
+         LevelChunk fromChunk = level.getChunkIfLoaded(from);
+         LevelChunk toChunk = level.getChunkIfLoaded(to);
+ 
+@@ -35,7 +36,7 @@ public class PistonMoveBlockStartPacket extends ExternalServerPacket {
+             // Place a moving piston head in our chunk so that it can start ticking and maintain proper timing
+             BlockState movingPiston = Blocks.MOVING_PISTON.defaultBlockState().setValue(PistonBaseBlock.FACING, pistonDir);
+             level.setBlock(to, movingPiston, 68);
+-            level.setBlockEntity(MovingPistonBlock.newMovingBlockEntity(to, movingPiston, Blocks.AIR.defaultBlockState(), pistonDir, retract, false));
++            level.setBlockEntity(MovingPistonBlock.newMovingBlockEntity(to, movingPiston, pushedBlock, pistonDir, retract, false));
+             level.getChunkSource().blockChanged(to);
+         }
+ 
+@@ -58,19 +59,21 @@ public class PistonMoveBlockStartPacket extends ExternalServerPacket {
+         fromChunk.playerChunk.broadcastChangesToOtherServers(fromChunk);
+         toChunk.playerChunk.broadcastChangesToOtherServers(toChunk);
+ 
+-        fromChunk.externalOwner.getConnection().send(new PistonMoveBlockStartPacket(level, from, to, pistonDir, retract));
++        fromChunk.externalOwner.getConnection().send(new PistonMoveBlockStartPacket(level, from, to, pushedBlock, pistonDir, retract));
+     }
+ 
+     private final UUID worldUUID;
+     private final BlockPos from;
+     private final BlockPos to;
++    private final BlockState pushedBlock;
+     private final Direction pistonDir;
+     private final boolean retract;
+ 
+-    public PistonMoveBlockStartPacket(ServerLevel level, BlockPos from, BlockPos to, Direction pistonDir, boolean retract) {
++    public PistonMoveBlockStartPacket(ServerLevel level, BlockPos from, BlockPos to, BlockState pushedBlock, Direction pistonDir, boolean retract) {
+         this.worldUUID = level.getWorld().getUID();
+         this.from = from;
+         this.to = to;
++        this.pushedBlock = pushedBlock;
+         this.pistonDir = pistonDir;
+         this.retract = retract;
+     }
+@@ -79,6 +82,7 @@ public class PistonMoveBlockStartPacket extends ExternalServerPacket {
+         this.worldUUID = in.readUUID();
+         this.from = in.readBlockPos();
+         this.to = in.readBlockPos();
++        this.pushedBlock = in.readById(Block.BLOCK_STATE_REGISTRY);
+         this.pistonDir = in.readEnum(Direction.class);
+         this.retract = in.readBoolean();
+     }
+@@ -88,6 +92,7 @@ public class PistonMoveBlockStartPacket extends ExternalServerPacket {
+         out.writeUUID(this.worldUUID);
+         out.writeBlockPos(this.from);
+         out.writeBlockPos(this.to);
++        out.writeId(Block.BLOCK_STATE_REGISTRY, this.pushedBlock);
+         out.writeEnum(this.pistonDir);
+         out.writeBoolean(this.retract);
+     }
+@@ -102,7 +107,7 @@ public class PistonMoveBlockStartPacket extends ExternalServerPacket {
+                 return;
+             }
+ 
+-            startBlockMove(craftWorld.getHandle(), from, to, pistonDir, retract, true);
++            startBlockMove(craftWorld.getHandle(), from, to, pushedBlock, pistonDir, retract, true);
+         });
+     }
+ }
