@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 21 Jan 2023 07:28:57 +0100
+Subject: [PATCH] Prevent spam on empty entities NBT.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java b/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
+index ca81c3b396a303fda8eef8b8c1ea106ffecfc807..707374502a35ced453bc861a0a2cdba7ac766d4f 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
+@@ -54,7 +54,14 @@ public class EntityStorage implements EntityPersistentStorage<Entity> {
+                 .orTimeout(20, TimeUnit.SECONDS)
+                 .thenApplyAsync(in -> {
+                     try {
+-                        return in == null ? Optional.empty() : Optional.of(NbtIo.read(in));
++                        if (in == null) return Optional.empty();
++                        CompoundTag tag = null;
++                        try {
++                            tag = NbtIo.read(in);
++                        } catch (java.util.zip.ZipException ex) {
++                            return Optional.empty();
++                        }
++                        return in == null ? Optional.empty() : Optional.of(tag);
+                     } catch (IOException e) {
+                         throw new RuntimeException(e);
+                     }
