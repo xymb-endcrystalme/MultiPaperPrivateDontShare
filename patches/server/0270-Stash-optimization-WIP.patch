@@ -271,7 +271,7 @@ index 0000000000000000000000000000000000000000..ea3bf4cf09db175ee205fd706e745fcd
 +}
 diff --git a/src/main/java/xymb/NBTDeduplicator.java b/src/main/java/xymb/NBTDeduplicator.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..8d0eac1e2249ff2e27d2119a44fe26fea2524dce
+index 0000000000000000000000000000000000000000..8a50fd2c3360e090d0f470a51aa0748a7f62e686
 --- /dev/null
 +++ b/src/main/java/xymb/NBTDeduplicator.java
 @@ -0,0 +1,296 @@
@@ -499,8 +499,8 @@ index 0000000000000000000000000000000000000000..8d0eac1e2249ff2e27d2119a44fe26fe
 +                }
 +            }
 +        }
-+        if (deduplicator.size() != oldItemHashesSize)
-+            System.out.println("Item hashes " + deduplicator.size());
++//        if (deduplicator.size() != oldItemHashesSize)
++//            System.out.println("Item hashes " + deduplicator.size());
 +        if (deduplicatedItems > 0 && !nbt.contains("anarchyOptimization")) {
 +            DeduplicatorUpdateManager.markForUpdate(key);
 +        }
@@ -564,7 +564,7 @@ index 0000000000000000000000000000000000000000..8d0eac1e2249ff2e27d2119a44fe26fe
 +        }
 +
 +        if (hash > 0 || item > 0 || both > 0) {
-+            System.out.println("Deduplication report - " + hash + " " + item + " " + both);
++            //System.out.println("Deduplication report - " + hash + " " + item + " " + both);
 +        }
 +    }
 +
