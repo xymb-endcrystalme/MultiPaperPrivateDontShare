@@ -6,7 +6,7 @@ Subject: [PATCH] Fixes and improvements on entities
 
 diff --git a/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java b/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..65fc58b43ad469b499529bf44423224093b625f0
+index 0000000000000000000000000000000000000000..4d33d9776a1b0fc3fda6e5e1d17a0f8e7bcd4901
 --- /dev/null
 +++ b/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java
 @@ -0,0 +1,118 @@
@@ -110,7 +110,7 @@ index 0000000000000000000000000000000000000000..65fc58b43ad469b499529bf444232240
 +
 +        if (this.empty) {
 +            for (int i = 0; i < 27; i++) {
-+                chestBoat.removeItemNoUpdate(i);
++                chestBoat.removeItemNoUpdateNoSync(i);
 +            }
 +            return;
 +        }
@@ -158,10 +158,10 @@ index c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd..7753621bda74d343333f4ee5444f36b4
                  if (MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle) instanceof ExternalPlayer newController) {
                      // Make sure we send the vehicle to the new controlling passenger, even if they don't have the chunk loaded
 diff --git a/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java b/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
-index ba14657c6911bfd54da6ee9e248b3a050455d68a..0b1711e196c6a39fb844ffca795deecc059b6d4f 100644
+index ba14657c6911bfd54da6ee9e248b3a050455d68a..9543cbd20926b0aa78bf160054d69062ecce1c14 100644
 --- a/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
 +++ b/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
-@@ -153,19 +153,41 @@ public class ChestBoat extends Boat implements HasCustomInventoryScreen, Contain
+@@ -153,19 +153,44 @@ public class ChestBoat extends Boat implements HasCustomInventoryScreen, Contain
  
      @Override
      public ItemStack removeItem(int slot, int amount) {
@@ -194,6 +194,9 @@ index ba14657c6911bfd54da6ee9e248b3a050455d68a..0b1711e196c6a39fb844ffca795deecc
 +            java.util.Set<puregero.multipaper.ExternalServer> servers = new java.util.HashSet<>(chunk.externalEntitiesSubscribers);
 +            puregero.multipaper.MultiPaper.broadcastPacketToExternalServers(servers, () -> new com.mrivanplays.multipaper.ChestBoatInventoryUpdatePacket(this));
 +        }
++    }
++    public ItemStack removeItemNoUpdateNoSync(int slot) {
++        return this.removeChestVehicleItemNoUpdate(slot);
 +    }
 +    public void setItemNoSync(int slot, ItemStack item) {
 +        this.setChestVehicleItem(slot, item);
