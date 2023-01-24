@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ivan Pekov <ivan@mrivanplays.com>
+Date: Tue, 24 Jan 2023 15:08:59 +0200
+Subject: [PATCH] Fixes and improvements on entities
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd..7753621bda74d343333f4ee5444f36b4fbbcbadb 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -2837,7 +2837,11 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+     public void stopRiding(boolean suppressCancellation) {
+         // Paper end
+         if (this.vehicle != null) {
+-            boolean wasControllingPassenger = MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle) == this; // MultiPaper
++            // MultiPaper start - MrIvanPlays - better wasControllingPassenger check
++            var controllingPassenger = MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle);
++            boolean wasControllingPassenger = controllingPassenger == this; // MultiPaper
++            wasControllingPassenger = !wasControllingPassenger ? controllingPassenger.getUUID().equals(this.getUUID()) : true;
++            // MultiPaper MrIvanPlays end
+             Entity entity = this.vehicle;
+ 
+             this.vehicle = null;
+@@ -2845,9 +2849,9 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+ 
+             // MultiPaper start - inform other servers that the player is no longer riding the entity and hand them the entity's data
+             LevelChunk chunk = level.getChunkIfLoaded(entity.blockPosition);
+-            if (vehicle == null && MultiPaper.isRealPlayer(this) && wasControllingPassenger && !EntityRemovePacket.removedEntities.containsKey(entity.getRootVehicle().getUUID())) {
++            if (chunk != null && vehicle == null && MultiPaper.isRealPlayer(this) && wasControllingPassenger && !EntityRemovePacket.removedEntities.containsKey(entity.getRootVehicle().getUUID())) { // MultiPaper MrIvanPlays - do not call if the chunk is null
+                 // Any server might now be controlling this vehicle
+-                Set<ExternalServer> servers = new LinkedHashSet<>(chunk == null ? Collections.emptyList() : chunk.externalEntitiesSubscribers);
++                Set<ExternalServer> servers = new LinkedHashSet<>(chunk.externalEntitiesSubscribers); // MultiPaper MrIvanPlays - null check moved up
+ 
+                 if (MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle) instanceof ExternalPlayer newController) {
+                     // Make sure we send the vehicle to the new controlling passenger, even if they don't have the chunk loaded
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java b/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
+index 707374502a35ced453bc861a0a2cdba7ac766d4f..19c432e9252264a2efcd835211eb3ddfc430e85c 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
+@@ -139,6 +139,7 @@ public class EntityStorage implements EntityPersistentStorage<Entity> {
+             ListTag listTag = new ListTag();
+             final java.util.Map<net.minecraft.world.entity.EntityType<?>, Integer> savedEntityCounts = new java.util.HashMap<>(); // Paper
+             dataList.getEntities().forEach((entity) -> {
++                if (puregero.multipaper.externalserverprotocol.EntityRemovePacket.removedEntities.containsKey(entity.getUUID())) return; // MultiPaper - MrIvanPlays - do not store removed entities
+                 // Paper start
+                 final EntityType<?> entityType = entity.getType();
+                 final int saveLimit = this.level.paperConfig().chunks.entityPerChunkSaveLimit.getOrDefault(entityType, -1);
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java
+index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..3d13840e6378820740d47ab18ccb28f6dbb361fe 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java
+@@ -86,6 +86,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+         }
+ 
+         Entity entity = level.entityManager.knownUuids.get(uuid);
++        boolean loadedRecursive = false; // MrIvanPlays
+ 
+         if (entity == null) {
+             entity = EntityType.loadEntityRecursive(tag, level, entity2 -> {
+@@ -99,6 +100,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+                     return null;
+                 }
+             });
++            loadedRecursive = true; // MrIvanPlays
+         } else if (entity instanceof ServerPlayer player) {
+             new Exception("Tried to update the nbt of player " + player.getScoreboardName() + " to " + tag).printStackTrace();
+         } else {
+@@ -108,6 +110,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+             }
+         }
+ 
++        if (!loadedRecursive) { // MrIvanPlays
+         if (tag.contains("Passengers", 9)) {
+             ListTag nbttaglist = tag.getList("Passengers", 10);
+ 
+@@ -120,6 +123,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+                 }
+             }
+         }
++        } // MrIvanPlays
+ 
+         if (entity instanceof Mob mob) mob.restoreLeashFromSave();
+ 
