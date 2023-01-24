@@ -4,61 +4,508 @@ Date: Tue, 24 Jan 2023 15:08:59 +0200
 Subject: [PATCH] Fixes and improvements on entities
 
 
-diff --git a/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java b/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java
+diff --git a/src/main/java/com/mrivanplays/multipaper/EntityInventorySyncable.java b/src/main/java/com/mrivanplays/multipaper/EntityInventorySyncable.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..2d087814371c09fc878edede66039f0ee756b0d2
+index 0000000000000000000000000000000000000000..72197a67c00f927e839ee06d8858c2161fbf6afa
 --- /dev/null
-+++ b/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java
-@@ -0,0 +1,119 @@
++++ b/src/main/java/com/mrivanplays/multipaper/EntityInventorySyncable.java
+@@ -0,0 +1,18 @@
 +package com.mrivanplays.multipaper;
 +
++import it.unimi.dsi.fastutil.ints.IntList;
++import net.minecraft.world.item.ItemStack;
++
++public interface EntityInventorySyncable {
++
++    IntList getSlots();
++
++    boolean isInventoryEmpty();
++
++    ItemStack getItem(int slot);
++
++    void setItemNoSync(int slot, ItemStack item);
++
++    void removeItemNoUpdateNoSync(int slot);
++
++}
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd..0964cfc5cd31f32364d0f3d772fef977cd017df4 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -2806,7 +2806,7 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+                 // MultiPaper start - inform the player's server that they are now riding an entity and hand them the entity's data
+                 Entity rootVehicle = this.getRootVehicle();
+                 if (MultiPaperEntitiesHandler.getControllingPassenger(rootVehicle) == this && MultiPaper.isChunkLocal(level.getChunkIfLoaded(rootVehicle.blockPosition)) && this instanceof ExternalPlayer player) {
+-                    player.externalServerConnection.send(new EntityUpdateNBTPacket(rootVehicle));
++                    player.externalServerConnection.send(EntityUpdateNBTPacket.createPacket(rootVehicle)); // MultiPaper - MrIvanPlays - replace
+                     EntityUpdateWithDependenciesPacket.sendPassengersRecursive(player.externalServerConnection, rootVehicle);
+                 }
+                 // MultiPaper end - inform the player's server that they are now riding an entity and hand them the entity's data
+@@ -2837,7 +2837,11 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+     public void stopRiding(boolean suppressCancellation) {
+         // Paper end
+         if (this.vehicle != null) {
+-            boolean wasControllingPassenger = MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle) == this; // MultiPaper
++            // MultiPaper start - MrIvanPlays - better wasControllingPassenger check
++            var controllingPassenger = MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle);
++            boolean wasControllingPassenger = controllingPassenger == this; // MultiPaper
++            wasControllingPassenger = !wasControllingPassenger ? controllingPassenger.getUUID().equals(this.getUUID()) : true;
++            // MultiPaper MrIvanPlays end
+             Entity entity = this.vehicle;
+ 
+             this.vehicle = null;
+@@ -2845,16 +2849,16 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+ 
+             // MultiPaper start - inform other servers that the player is no longer riding the entity and hand them the entity's data
+             LevelChunk chunk = level.getChunkIfLoaded(entity.blockPosition);
+-            if (vehicle == null && MultiPaper.isRealPlayer(this) && wasControllingPassenger && !EntityRemovePacket.removedEntities.containsKey(entity.getRootVehicle().getUUID())) {
++            if (chunk != null && vehicle == null && MultiPaper.isRealPlayer(this) && wasControllingPassenger && !EntityRemovePacket.removedEntities.containsKey(entity.getRootVehicle().getUUID())) { // MultiPaper MrIvanPlays - do not call if the chunk is null
+                 // Any server might now be controlling this vehicle
+-                Set<ExternalServer> servers = new LinkedHashSet<>(chunk == null ? Collections.emptyList() : chunk.externalEntitiesSubscribers);
++                Set<ExternalServer> servers = new LinkedHashSet<>(chunk.externalEntitiesSubscribers); // MultiPaper MrIvanPlays - null check moved up
+ 
+                 if (MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle) instanceof ExternalPlayer newController) {
+                     // Make sure we send the vehicle to the new controlling passenger, even if they don't have the chunk loaded
+                     servers.add(newController.externalServerConnection.externalServer);
+                 }
+ 
+-                MultiPaper.broadcastPacketToExternalServers(servers, () -> new EntityUpdateNBTPacket(entity.getRootVehicle()));
++                MultiPaper.broadcastPacketToExternalServers(servers, () -> EntityUpdateNBTPacket.createPacket(entity.getRootVehicle())); // MultiPaper - MrIvanPlays - change
+                 EntityUpdateWithDependenciesPacket.sendPassengersRecursive(packet -> MultiPaper.broadcastPacketToExternalServers(servers, packet), entity.getRootVehicle());
+             }
+             // MultiPaper end - inform other servers that the player is no longer riding the entity and hand them the entity's data
+diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractChestedHorse.java b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractChestedHorse.java
+index a3f3e06679cef10f50346e9cc6672ec91c6f04a6..7155ea5e935d2a808ce917ff173dc601084201e0 100644
+--- a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractChestedHorse.java
++++ b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractChestedHorse.java
+@@ -116,7 +116,7 @@ public abstract class AbstractChestedHorse extends AbstractHorse {
+                 CompoundTag compoundTag = listTag.getCompound(i);
+                 int j = compoundTag.getByte("Slot") & 255;
+                 if (j >= 2 && j < this.inventory.getContainerSize()) {
+-                    this.inventory.setItem(j, ItemStack.of(compoundTag));
++                    setItem(j, ItemStack.of(compoundTag)); // MultiPaper - MrIvanPlays - change
+                 }
+             }
+         }
+diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
+index 03c56fa59c547a434ac17179680bad5fb196a49c..2e4a3abc35f0e852a09821d2d0c206e4d65fd42e 100644
+--- a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
++++ b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
+@@ -73,7 +73,7 @@ import net.minecraft.world.phys.AABB;
+ import net.minecraft.world.phys.Vec3;
+ import org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason; // CraftBukkit
+ 
+-public abstract class AbstractHorse extends Animal implements ContainerListener, HasCustomInventoryScreen, PlayerRideableJumping, Saddleable {
++public abstract class AbstractHorse extends Animal implements ContainerListener, HasCustomInventoryScreen, PlayerRideableJumping, Saddleable, com.mrivanplays.multipaper.EntityInventorySyncable { // MultiPaper - MrIvanPlays - EntityInventorySyncable
+ 
+     public static final int EQUIPMENT_SLOT_OFFSET = 400;
+     public static final int CHEST_SLOT_OFFSET = 499;
+@@ -120,6 +120,31 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+         this.createInventory();
+     }
+ 
++    // MultiPaper start - MrIvanPlays - proper setItem methods
++    @Override public ItemStack getItem(int slot) { return this.inventory.getItem(slot); }
++    @Override public boolean isInventoryEmpty() { return this.inventory.isEmpty(); }
++    @Override public void setItemNoSync(int slot, ItemStack item) { this.inventory.setItem(slot, item); }
++    @Override public void removeItemNoUpdateNoSync(int slot) { this.inventory.removeItemNoUpdate(slot); }
++    public void setItem(int slot, ItemStack item) {
++        try {
++            this.setItemNoSync(slot, item);
++        } finally {
++            puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
++        }
++    }
++    @javax.annotation.Nullable
++    private static it.unimi.dsi.fastutil.ints.IntList slots = null;
++    @Override
++    public it.unimi.dsi.fastutil.ints.IntList getSlots() {
++        if (slots == null) {
++            slots = it.unimi.dsi.fastutil.ints.IntList.of();
++            for (int i = 0; i < 16; i++) {
++                slots.add(i);
++            }
++        }
++        return slots;
++    }
++    // MultiPaper end - MrIvanPlays
+     @Override
+     protected void registerGoals() {
+         this.goalSelector.addGoal(1, new PanicGoal(this, 1.2D));
+@@ -215,7 +240,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+ 
+     @Override
+     public void equipSaddle(@Nullable SoundSource sound) {
+-        this.inventory.setItem(0, new ItemStack(Items.SADDLE));
++        setItem(0, new ItemStack(Items.SADDLE)); // MultiPaper - MrIvanPlays
+         if (sound != null) {
+             this.level.playSound((Player) null, (Entity) this, SoundEvents.HORSE_SADDLE, sound, 0.5F, 1.0F);
+         }
+@@ -307,7 +332,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+                 ItemStack itemstack = inventorysubcontainer.getItem(j);
+ 
+                 if (!itemstack.isEmpty()) {
+-                    this.inventory.setItem(j, itemstack.copy());
++                    setItem(j, itemstack.copy()); // MultiPaper - MrIvanPlays - change
+                 }
+             }
+         }
+@@ -845,7 +870,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+             ItemStack itemstack = ItemStack.of(nbt.getCompound("SaddleItem"));
+ 
+             if (itemstack.is(Items.SADDLE)) {
+-                this.inventory.setItem(0, itemstack);
++                setItem(0, itemstack); // MultiPaper - MrIvanPlays - change
+             }
+         }
+ 
+@@ -1031,7 +1056,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+                 if (!predicate.test(stack)) {
+                     return false;
+                 } else {
+-                    AbstractHorse.this.inventory.setItem(slot, stack);
++                    AbstractHorse.this.setItem(slot, stack); // MultiPaper - MrIvanPlays - change
+                     AbstractHorse.this.updateContainerEquipment();
+                     return true;
+                 }
+diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java b/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java
+index 3730f9f61136abda0fbb8414514ed1d977d9bdfa..bd1c8bd0f2608a78ba82bfb3773d371c6de367ba 100644
+--- a/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java
++++ b/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java
+@@ -42,6 +42,21 @@ public class Horse extends AbstractHorse {
+         super(type, world);
+     }
+ 
++    // MultiPaper start - MrIvanPlays - implement getSlots
++    @javax.annotation.Nullable
++    private static it.unimi.dsi.fastutil.ints.IntList slots = null;
++    @Override
++    public it.unimi.dsi.fastutil.ints.IntList getSlots() {
++        if (slots == null) {
++            slots = it.unimi.dsi.fastutil.ints.IntList.of();
++            for (int i = 0; i < 17; i++) {
++                slots.add(i);
++            }
++        }
++        return slots;
++    }
++    // MultiPaper end - MrIvanPlays
++
+     @Override
+     protected void randomizeAttributes(RandomSource random) {
+         this.getAttribute(Attributes.MAX_HEALTH).setBaseValue((double)this.generateRandomMaxHealth(random));
+@@ -82,7 +97,7 @@ public class Horse extends AbstractHorse {
+         if (nbt.contains("ArmorItem", 10)) {
+             ItemStack itemStack = ItemStack.of(nbt.getCompound("ArmorItem"));
+             if (!itemStack.isEmpty() && this.isArmor(itemStack)) {
+-                this.inventory.setItem(1, itemStack);
++                setItem(1, itemStack); // MultiPaper - MrIvanPlays - change
+             }
+         }
+ 
+diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/Llama.java b/src/main/java/net/minecraft/world/entity/animal/horse/Llama.java
+index ed8dfabdad28e27054aa0679e06fcf87dc049f77..80a468880d06bb64477fe949780f22e7a57c37e0 100644
+--- a/src/main/java/net/minecraft/world/entity/animal/horse/Llama.java
++++ b/src/main/java/net/minecraft/world/entity/animal/horse/Llama.java
+@@ -114,7 +114,7 @@ public class Llama extends AbstractChestedHorse implements RangedAttackMob {
+         super.readAdditionalSaveData(nbt);
+         this.setVariant(nbt.getInt("Variant"));
+         if (nbt.contains("DecorItem", 10)) {
+-            this.inventory.setItem(1, ItemStack.of(nbt.getCompound("DecorItem")));
++            setItem(1, ItemStack.of(nbt.getCompound("DecorItem"))); // MultiPaper - MrIvanPlays - change
+         }
+ 
+         this.updateContainerEquipment();
+diff --git a/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java b/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java
+index 16137ad9ae1f7a8a9688b50d8f1deca2dadb57e9..27fabd6dd8fa6a46103dccb31a645755ff02e376 100644
+--- a/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java
++++ b/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java
+@@ -25,7 +25,7 @@ import org.bukkit.entity.HumanEntity;
+ import org.bukkit.inventory.InventoryHolder;
+ // CraftBukkit end
+ 
+-public abstract class AbstractMinecartContainer extends AbstractMinecart implements ContainerEntity {
++public abstract class AbstractMinecartContainer extends AbstractMinecart implements ContainerEntity, com.mrivanplays.multipaper.EntityInventorySyncable { // MultiPaper - MrIvanPlays - EntityInventorySyncable
+ 
+     // Airplane start
+     private NonNullList<ItemStack> itemStacks;
+@@ -117,19 +117,58 @@ public abstract class AbstractMinecartContainer extends AbstractMinecart impleme
+         return this.getChestVehicleItem(slot);
+     }
+ 
++    // MultiPaper start - MrIvanPlays - implement EntityInventorySyncable
++    @Override
++    public boolean isInventoryEmpty() {
++        return this.itemStacks.isEmpty();
++    }
++    @Override
++    public void setItemNoSync(int slot, ItemStack item) {
++        this.setChestVehicleItem(slot, item);
++    }
++    @Override
++    public void removeItemNoUpdateNoSync(int slot) {
++        this.removeChestVehicleItemNoUpdate(slot);
++    }
++    @javax.annotation.Nullable
++    private static it.unimi.dsi.fastutil.ints.IntList slots = null;
++    @Override
++    public it.unimi.dsi.fastutil.ints.IntList getSlots() {
++        if (slots == null) {
++            slots = it.unimi.dsi.fastutil.ints.IntList.of();
++            for (int i = 0; i < this.getContainerSize(); i++) {
++                slots.add(i);
++            }
++        }
++        return slots;
++    }
++    // MultiPaper end - MrIvanPlays
++
+     @Override
+     public ItemStack removeItem(int slot, int amount) {
++        try { // MultiPaper - MrIvanPlays
+         return this.removeChestVehicleItem(slot, amount);
++        } finally { // MultiPaper start - MrIvanPlays - sync entity inventories
++            puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
++        } // MultiPaper end
+     }
+ 
+     @Override
+     public ItemStack removeItemNoUpdate(int slot) {
++        try { // MultiPaper - MrIvanPlays
+         return this.removeChestVehicleItemNoUpdate(slot);
++        } finally { // MultiPaper start - MrIvanPlays - sync entity inventories
++            puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
++        } // MultiPaper end - MrIvanPlays
+     }
+ 
+     @Override
+     public void setItem(int slot, ItemStack stack) {
++        try { // MultiPaper - MrIvanPlays
+         this.setChestVehicleItem(slot, stack);
++        } finally { // MultiPaper start - MrIvanPlays - sync entity inventories
++            puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
++        } // MultiPaper end - MrIvanPlays
+     }
+ 
+     @Override
+diff --git a/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java b/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
+index ba14657c6911bfd54da6ee9e248b3a050455d68a..43c2282856ccdd8295f36d86d5e9178f65e1765e 100644
+--- a/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
++++ b/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
+@@ -31,7 +31,7 @@ import org.bukkit.entity.HumanEntity;
+ import org.bukkit.inventory.InventoryHolder;
+ // CraftBukkit end
+ 
+-public class ChestBoat extends Boat implements HasCustomInventoryScreen, ContainerEntity {
++public class ChestBoat extends Boat implements HasCustomInventoryScreen, ContainerEntity, com.mrivanplays.multipaper.EntityInventorySyncable {
+ 
+     private static final int CONTAINER_SIZE = 27;
+     private NonNullList<ItemStack> itemStacks;
+@@ -153,19 +153,53 @@ public class ChestBoat extends Boat implements HasCustomInventoryScreen, Contain
+ 
+     @Override
+     public ItemStack removeItem(int slot, int amount) {
++        try { // MultiPaper - MrIvanPlays
+         return this.removeChestVehicleItem(slot, amount);
++        } finally { // MultiPaper start - MrIvanPlays
++            puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
++        } // MultiPaper end - MrIvanPlays
+     }
+ 
+     @Override
+     public ItemStack removeItemNoUpdate(int slot) {
++        try { // MultiPaper - MrIvanPlays
+         return this.removeChestVehicleItemNoUpdate(slot);
++        } finally { // MultiPaper start - MrIvanPlays
++            puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
++        } // MultiPaper end - MrIvanPlays
+     }
+ 
+     @Override
+     public void setItem(int slot, ItemStack stack) {
++        puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
+         this.setChestVehicleItem(slot, stack);
+     }
+ 
++    // MultiPaper start - MrIvanPlays - sync inventory
++
++    @Nullable
++    private static it.unimi.dsi.fastutil.ints.IntList slots = null;
++    @Override
++    public it.unimi.dsi.fastutil.ints.IntList getSlots() {
++        if (slots == null) {
++            slots = it.unimi.dsi.fastutil.ints.IntList.of();
++            for (int i = 0; i < 27; i++) {
++                slots.add(i);
++            }
++        }
++        return slots;
++    }
++    @Override public boolean isInventoryEmpty() { return this.itemStacks.isEmpty(); }
++    @Override
++    public void removeItemNoUpdateNoSync(int slot) {
++        this.removeChestVehicleItemNoUpdate(slot);
++    }
++    @Override
++    public void setItemNoSync(int slot, ItemStack item) {
++        this.setChestVehicleItem(slot, item);
++    }
++    // MultiPaper end - MrIvanPlays
++
+     @Override
+     public SlotAccess getSlot(int mappedIndex) {
+         return this.getChestVehicleSlot(mappedIndex);
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java b/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
+index 707374502a35ced453bc861a0a2cdba7ac766d4f..19c432e9252264a2efcd835211eb3ddfc430e85c 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
+@@ -139,6 +139,7 @@ public class EntityStorage implements EntityPersistentStorage<Entity> {
+             ListTag listTag = new ListTag();
+             final java.util.Map<net.minecraft.world.entity.EntityType<?>, Integer> savedEntityCounts = new java.util.HashMap<>(); // Paper
+             dataList.getEntities().forEach((entity) -> {
++                if (puregero.multipaper.externalserverprotocol.EntityRemovePacket.removedEntities.containsKey(entity.getUUID())) return; // MultiPaper - MrIvanPlays - do not store removed entities
+                 // Paper start
+                 final EntityType<?> entityType = entity.getType();
+                 final int saveLimit = this.level.paperConfig().chunks.entityPerChunkSaveLimit.getOrDefault(entityType, -1);
+diff --git a/src/main/java/net/minecraft/world/level/entity/PersistentEntitySectionManager.java b/src/main/java/net/minecraft/world/level/entity/PersistentEntitySectionManager.java
+index ef9d1d38dfd7fcbfbd4bdbe13a623f6299a7779a..725cf5eeb730e1162cb27a145cf5a30ff29a7907 100644
+--- a/src/main/java/net/minecraft/world/level/entity/PersistentEntitySectionManager.java
++++ b/src/main/java/net/minecraft/world/level/entity/PersistentEntitySectionManager.java
+@@ -406,7 +406,7 @@ public class PersistentEntitySectionManager<T extends EntityAccess> implements A
+             LevelChunk chunk = entitySliceManager.world.getChunkIfLoaded(chunkentities.getPos().x, chunkentities.getPos().z);
+             if (chunk != null) {
+                 for (Entity existingEntity : existingEntities) {
+-                    MultiPaper.broadcastPacketToExternalServers(chunk.externalEntitiesSubscribers, () -> new EntityUpdateNBTPacket(existingEntity));
++                    MultiPaper.broadcastPacketToExternalServers(chunk.externalEntitiesSubscribers, () -> EntityUpdateNBTPacket.createPacket(existingEntity)); // MultiPaper - MrIvanPlays - change
+                 }
+             }
+             // MultiPaper end
+diff --git a/src/main/java/puregero/multipaper/MultiPaperConnection.java b/src/main/java/puregero/multipaper/MultiPaperConnection.java
+index 3ff3a1c38857da87740e9aa1de845a1dc300816f..674cfed2bf8ec668939921c66bf223d6c8661f43 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperConnection.java
++++ b/src/main/java/puregero/multipaper/MultiPaperConnection.java
+@@ -404,7 +404,7 @@ public class MultiPaperConnection extends ServerBoundMessageHandler {
+             if (chunk instanceof LevelChunk levelChunk) {
+                 for (Entity entity : levelChunk.level.entityManager.getEntities(chunk.getPos())) {
+                     if (MultiPaper.isRealPlayer(entity) && entity.getRootVehicle() != entity) {
+-                        server.getConnection().send(new EntityUpdateNBTPacket(entity.getRootVehicle()));
++                        server.getConnection().send(EntityUpdateNBTPacket.createPacket(entity.getRootVehicle())); // MultiPaper - MrIvanPlays - change
+                         EntityUpdateWithDependenciesPacket.sendPassengersRecursive(server.getConnection(), entity.getRootVehicle());
+                     }
+                 }
+diff --git a/src/main/java/puregero/multipaper/MultiPaperEntitiesHandler.java b/src/main/java/puregero/multipaper/MultiPaperEntitiesHandler.java
+index ff7c1726c323a104bac9a9a8b3a8ea6d6414dc75..40ae30fb0f2a77651a768854d8948a88a916037f 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperEntitiesHandler.java
++++ b/src/main/java/puregero/multipaper/MultiPaperEntitiesHandler.java
+@@ -139,7 +139,7 @@ public class MultiPaperEntitiesHandler {
+                 // Leaving our jurisdiction, do a full entity update to ensure the new external server has all the required info
+                 if (!(entity instanceof ServerPlayer)) { // Ignore players as they aren't ticked by the new external server
+                     onEntityUnlock(entity);
+-                    MultiPaper.runSync(() -> MultiPaper.broadcastPacketToExternalServers(chunkTo.externalEntitiesSubscribers, () -> new EntityUpdateNBTPacket(entity)));
++                    MultiPaper.runSync(() -> MultiPaper.broadcastPacketToExternalServers(chunkTo.externalEntitiesSubscribers, () -> EntityUpdateNBTPacket.createPacket(entity))); // MultiPaper - MrIvanPlays - change
+                     if (entity instanceof Mob mob) {
+                         MultiPaper.runSync(() -> {
+                             BlockPos goal = mob.getNavigation().getTargetPos();
+@@ -165,7 +165,7 @@ public class MultiPaperEntitiesHandler {
+                             MultiPaper.runSync(() -> toServer.getConnection().send(new EntityUpdatePacket(entity, new ClientboundTeleportEntityPacket(entity))));
+                         } else {
+                             MultiPaper.runSync(() -> {
+-                                toServer.getConnection().send(new EntityUpdateNBTPacket(entity));
++                                toServer.getConnection().send(EntityUpdateNBTPacket.createPacket(entity)); // MultiPaper - MrIvanPlays - change
+                                 if (entity.isVehicle()) {
+                                     EntityUpdateWithDependenciesPacket.sendPassengersRecursive(toServer.getConnection(), entity);
+                                 }
+@@ -329,11 +329,11 @@ public class MultiPaperEntitiesHandler {
+ 
+             LevelChunk chunk = entity.level.getChunkIfLoaded(entity.blockPosition());
+             if (chunk != null) {
+-                MultiPaper.broadcastPacketToExternalServers(chunk.externalEntitiesSubscribers, () -> new EntityUpdateNBTPacket(entity));
++                MultiPaper.broadcastPacketToExternalServers(chunk.externalEntitiesSubscribers, () -> EntityUpdateNBTPacket.createPacket(entity)); // MultiPaper - MrIvanPlays - change
+                 MultiPaper.broadcastPacketToExternalServers(chunk.externalEntitiesSubscribers, () -> new EntityUpdatePacket(entity, new ClientboundSetEntityDataPacket(entity.getId(), entity.getEntityData().getAll())));
+             } else {
+                 LOGGER.warn(entity + " spawned in an unloaded chunk, broadcasting it to all servers just incase anyone has it loaded");
+-                MultiPaper.broadcastPacketToExternalServers(new EntityUpdateNBTPacket(entity));
++                MultiPaper.broadcastPacketToExternalServers(EntityUpdateNBTPacket.createPacket(entity)); // MultiPaper - MrIvanPlays - change
+                 MultiPaper.broadcastPacketToExternalServers(new EntityUpdatePacket(entity, new ClientboundSetEntityDataPacket(entity.getId(), entity.getEntityData().getAll())));
+             }
+         });
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..2588c85e9a9008bbc95b2384d95638d36d24137f
+--- /dev/null
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java
+@@ -0,0 +1,141 @@
++package puregero.multipaper.externalserverprotocol;
++
++import com.mrivanplays.multipaper.EntityInventorySyncable;
 +import java.util.HashMap;
++import java.util.HashSet;
 +import java.util.Map;
++import java.util.Set;
 +import java.util.UUID;
 +import net.minecraft.nbt.CompoundTag;
 +import net.minecraft.network.FriendlyByteBuf;
 +import net.minecraft.server.level.ServerLevel;
 +import net.minecraft.world.entity.Entity;
-+import net.minecraft.world.entity.vehicle.ChestBoat;
 +import net.minecraft.world.item.ItemStack;
++import net.minecraft.world.level.chunk.LevelChunk;
 +import org.bukkit.Bukkit;
 +import org.bukkit.World;
 +import org.bukkit.craftbukkit.CraftWorld;
++import puregero.multipaper.ExternalServer;
 +import puregero.multipaper.ExternalServerConnection;
 +import puregero.multipaper.MultiPaper;
-+import puregero.multipaper.externalserverprotocol.EntityRemovePacket;
-+import puregero.multipaper.externalserverprotocol.ExternalServerPacket;
 +
-+public class ChestBoatInventoryUpdatePacket extends ExternalServerPacket {
++// should work for basically every entity that implements the EntityInventorySyncable interface
++public class EntityInventoryUpdatePacket extends ExternalServerPacket {
++
++    public static void sendPacket(Entity entity) {
++        if (!(entity instanceof EntityInventorySyncable syncable)) {
++            return;
++        }
++        String world = ((ServerLevel) entity.level).convertable.getLevelId();
++        UUID entityId = entity.getUUID();
++
++        boolean empty;
++        Map<Integer, CompoundTag> items;
++        if (!syncable.isInventoryEmpty()) {
++            empty = false;
++            items = new HashMap<>();
++            for (int i : syncable.getSlots()) {
++                CompoundTag nbt = new CompoundTag();
++                ItemStack item = syncable.getItem(i);
++                if (item.isEmpty()) {
++                    continue;
++                }
++                nbt.putInt("MultiPaper.Slot", i);
++                item.save(nbt);
++                items.put(i, nbt);
++            }
++        } else {
++            items = null;
++            empty = true;
++        }
++
++        LevelChunk chunk = entity.level.getChunkIfLoaded(entity.blockPosition);
++        if (chunk != null) {
++            Set<ExternalServer> servers = new HashSet<>(chunk.externalEntitiesSubscribers);
++            MultiPaper.broadcastPacketToExternalServers(servers, () -> new EntityInventoryUpdatePacket(world, entityId, items, empty));
++        }
++    }
 +
 +    private final String world;
 +    private final UUID entityId;
 +    private Map<Integer, CompoundTag> items;
 +    private final boolean empty;
 +
-+    public ChestBoatInventoryUpdatePacket(ChestBoat entity) {
-+        this.world = ((ServerLevel) entity.level).convertable.getLevelId();
-+        this.entityId = entity.getUUID();
-+
-+        if (!entity.getItemStacks().isEmpty()) {
-+            this.empty = false;
-+            this.items = new HashMap<>();
-+            for (int i = 0; i < 27; i++) {
-+                CompoundTag nbt = new CompoundTag();
-+                ItemStack item = entity.getItem(i);
-+                if (item.isEmpty()) {
-+                    continue;
-+                }
-+                nbt.putInt("MultiPaper.Slot", i);
-+                item.save(nbt);
-+                this.items.put(i, nbt);
-+            }
-+        } else {
-+            this.empty = true;
-+        }
++    private EntityInventoryUpdatePacket(String world, UUID entityId, Map<Integer, CompoundTag> items, boolean empty) {
++        this.world = world;
++        this.entityId = entityId;
++        this.items = items;
++        this.empty = empty;
 +    }
 +
-+    public ChestBoatInventoryUpdatePacket(FriendlyByteBuf in) {
++    public EntityInventoryUpdatePacket(FriendlyByteBuf in) {
 +        this.world = in.readUtf();
 +        this.entityId = in.readUUID();
 +        this.empty = in.readBoolean();
@@ -105,125 +552,90 @@ index 0000000000000000000000000000000000000000..2d087814371c09fc878edede66039f0e
 +        }
 +
 +        Entity entity = level.entityManager.knownUuids.get(this.entityId);
-+        if (!(entity instanceof ChestBoat chestBoat)) {
++        if (!(entity instanceof EntityInventorySyncable syncable)) {
 +            return;
 +        }
 +
 +        if (this.empty) {
-+            for (int i = 0; i < 27; i++) {
-+                chestBoat.removeItemNoUpdateNoSync(i);
++            for (int i : syncable.getSlots()) {
++                syncable.removeItemNoUpdateNoSync(i);
 +            }
 +            return;
 +        }
 +
-+        for (int i = 0; i < 27; i++) {
++        for (int i : syncable.getSlots()) {
 +            CompoundTag itemTag = this.items.get(i);
-+            if (itemTag == null && chestBoat.getItem(i) != ItemStack.EMPTY) {
-+                chestBoat.setItemNoSync(i, ItemStack.EMPTY);
++            if (itemTag == null && syncable.getItem(i) != ItemStack.EMPTY) {
++                syncable.setItemNoSync(i, ItemStack.EMPTY);
 +                continue;
 +            }
 +            if (itemTag == null) {
 +                continue;
 +            }
-+            chestBoat.setItemNoSync(i, ItemStack.of(itemTag));
++            syncable.setItemNoSync(i, ItemStack.of(itemTag));
 +        }
 +    }
 +}
-diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
-index c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd..7753621bda74d343333f4ee5444f36b4fbbcbadb 100644
---- a/src/main/java/net/minecraft/world/entity/Entity.java
-+++ b/src/main/java/net/minecraft/world/entity/Entity.java
-@@ -2837,7 +2837,11 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
-     public void stopRiding(boolean suppressCancellation) {
-         // Paper end
-         if (this.vehicle != null) {
--            boolean wasControllingPassenger = MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle) == this; // MultiPaper
-+            // MultiPaper start - MrIvanPlays - better wasControllingPassenger check
-+            var controllingPassenger = MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle);
-+            boolean wasControllingPassenger = controllingPassenger == this; // MultiPaper
-+            wasControllingPassenger = !wasControllingPassenger ? controllingPassenger.getUUID().equals(this.getUUID()) : true;
-+            // MultiPaper MrIvanPlays end
-             Entity entity = this.vehicle;
- 
-             this.vehicle = null;
-@@ -2845,9 +2849,9 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
- 
-             // MultiPaper start - inform other servers that the player is no longer riding the entity and hand them the entity's data
-             LevelChunk chunk = level.getChunkIfLoaded(entity.blockPosition);
--            if (vehicle == null && MultiPaper.isRealPlayer(this) && wasControllingPassenger && !EntityRemovePacket.removedEntities.containsKey(entity.getRootVehicle().getUUID())) {
-+            if (chunk != null && vehicle == null && MultiPaper.isRealPlayer(this) && wasControllingPassenger && !EntityRemovePacket.removedEntities.containsKey(entity.getRootVehicle().getUUID())) { // MultiPaper MrIvanPlays - do not call if the chunk is null
-                 // Any server might now be controlling this vehicle
--                Set<ExternalServer> servers = new LinkedHashSet<>(chunk == null ? Collections.emptyList() : chunk.externalEntitiesSubscribers);
-+                Set<ExternalServer> servers = new LinkedHashSet<>(chunk.externalEntitiesSubscribers); // MultiPaper MrIvanPlays - null check moved up
- 
-                 if (MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle) instanceof ExternalPlayer newController) {
-                     // Make sure we send the vehicle to the new controlling passenger, even if they don't have the chunk loaded
-diff --git a/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java b/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
-index ba14657c6911bfd54da6ee9e248b3a050455d68a..9543cbd20926b0aa78bf160054d69062ecce1c14 100644
---- a/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
-+++ b/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
-@@ -153,19 +153,44 @@ public class ChestBoat extends Boat implements HasCustomInventoryScreen, Contain
- 
-     @Override
-     public ItemStack removeItem(int slot, int amount) {
-+        try { // MultiPaper - MrIvanPlays
-         return this.removeChestVehicleItem(slot, amount);
-+        } finally { // MultiPaper start - MrIvanPlays
-+            this.sendUpdatePacket();
-+        } // MultiPaper end - MrIvanPlays
-     }
- 
-     @Override
-     public ItemStack removeItemNoUpdate(int slot) {
-+        try { // MultiPaper - MrIvanPlays
-         return this.removeChestVehicleItemNoUpdate(slot);
-+        } finally { // MultiPaper start - MrIvanPlays
-+            this.sendUpdatePacket();
-+        } // MultiPaper end - MrIvanPlays
-     }
- 
-     @Override
-     public void setItem(int slot, ItemStack stack) {
-+        this.sendUpdatePacket(); // MultiPaper - MrIvanPlays
-         this.setChestVehicleItem(slot, stack);
-     }
- 
-+    // MultiPaper start - MrIvanPlays - sync inventory
-+    private void sendUpdatePacket() {
-+        net.minecraft.world.level.chunk.LevelChunk chunk = this.level.getChunkIfLoaded(this.blockPosition);
-+        if (chunk != null) {
-+            java.util.Set<puregero.multipaper.ExternalServer> servers = new java.util.HashSet<>(chunk.externalEntitiesSubscribers);
-+            puregero.multipaper.MultiPaper.broadcastPacketToExternalServers(servers, () -> new com.mrivanplays.multipaper.ChestBoatInventoryUpdatePacket(this));
-+        }
-+    }
-+    public ItemStack removeItemNoUpdateNoSync(int slot) {
-+        return this.removeChestVehicleItemNoUpdate(slot);
-+    }
-+    public void setItemNoSync(int slot, ItemStack item) {
-+        this.setChestVehicleItem(slot, item);
-+    }
-+    // MultiPaper end - MrIvanPlays
-+
-     @Override
-     public SlotAccess getSlot(int mappedIndex) {
-         return this.getChestVehicleSlot(mappedIndex);
-diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java b/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
-index 707374502a35ced453bc861a0a2cdba7ac766d4f..19c432e9252264a2efcd835211eb3ddfc430e85c 100644
---- a/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
-+++ b/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
-@@ -139,6 +139,7 @@ public class EntityStorage implements EntityPersistentStorage<Entity> {
-             ListTag listTag = new ListTag();
-             final java.util.Map<net.minecraft.world.entity.EntityType<?>, Integer> savedEntityCounts = new java.util.HashMap<>(); // Paper
-             dataList.getEntities().forEach((entity) -> {
-+                if (puregero.multipaper.externalserverprotocol.EntityRemovePacket.removedEntities.containsKey(entity.getUUID())) return; // MultiPaper - MrIvanPlays - do not store removed entities
-                 // Paper start
-                 final EntityType<?> entityType = entity.getType();
-                 final int saveLimit = this.level.paperConfig().chunks.entityPerChunkSaveLimit.getOrDefault(entityType, -1);
 diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java
-index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..3d13840e6378820740d47ab18ccb28f6dbb361fe 100644
+index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..e96e8b98dd1416e9781049fd50d5d0cc9d17f914 100644
 --- a/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java
 +++ b/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java
-@@ -86,6 +86,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+@@ -21,15 +21,15 @@ import java.util.UUID;
+ 
+ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+ 
+-    private static final Logger LOGGER = LogManager.getLogger(EntityUpdateNBTPacket.class.getSimpleName());
+-
+-    private final String world;
+-    private final UUID uuid;
+-    private final byte[] data;
+-
+-    public EntityUpdateNBTPacket(Entity entity) {
+-        this.world = ((ServerLevel) entity.level).convertable.getLevelId();
+-        this.uuid = entity.getUUID();
++    // MultiPaper start - MrIvanPlays - construct this differently
++    private EntityUpdateNBTPacket(String world, UUID uuid, byte[] data) {
++        this.world = world;
++        this.uuid = uuid;
++        this.data = data;
++    }
++    public static ExternalServerPacket createPacket(Entity entity) {
++        String world = ((ServerLevel) entity.level).convertable.getLevelId();
++        UUID uuid = entity.getUUID();
+ 
+         CompoundTag tag = new CompoundTag();
+ 
+@@ -38,15 +38,27 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+         entity.isSyncing = false;
+ 
+         if (tag.getAllKeys().isEmpty()) {
+-            new Exception("Sending an empty entity " + entity).printStackTrace();
++            // remove entity from the other servers if it's empty here
++            return new EntityRemovePacket(world, uuid);
+         }
+ 
++        byte[] data;
+         try {
+-            this.data = MultiPaper.nbtToBytes(tag);
++            data = MultiPaper.nbtToBytes(tag);
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++        return new EntityUpdateNBTPacket(world, uuid, data);
+     }
++    // MultiPaper end - MrIvanPlays
++
++    private static final Logger LOGGER = LogManager.getLogger(EntityUpdateNBTPacket.class.getSimpleName());
++
++    private final String world;
++    private final UUID uuid;
++    private final byte[] data;
++
++    // MultiPaper - MrIvanPlays - conflict on change - we're gonna construct this packet differently
+ 
+     public EntityUpdateNBTPacket(FriendlyByteBuf in) {
+         this.world = in.readUtf();
+@@ -86,6 +98,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
          }
  
          Entity entity = level.entityManager.knownUuids.get(uuid);
@@ -231,7 +643,7 @@ index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..3d13840e6378820740d47ab18ccb28f6
  
          if (entity == null) {
              entity = EntityType.loadEntityRecursive(tag, level, entity2 -> {
-@@ -99,6 +100,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+@@ -99,6 +112,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
                      return null;
                  }
              });
@@ -239,7 +651,7 @@ index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..3d13840e6378820740d47ab18ccb28f6
          } else if (entity instanceof ServerPlayer player) {
              new Exception("Tried to update the nbt of player " + player.getScoreboardName() + " to " + tag).printStackTrace();
          } else {
-@@ -108,6 +110,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+@@ -108,6 +122,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
              }
          }
  
@@ -247,7 +659,7 @@ index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..3d13840e6378820740d47ab18ccb28f6
          if (tag.contains("Passengers", 9)) {
              ListTag nbttaglist = tag.getList("Passengers", 10);
  
-@@ -120,6 +123,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+@@ -120,6 +135,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
                  }
              }
          }
@@ -256,21 +668,40 @@ index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..3d13840e6378820740d47ab18ccb28f6
          if (entity instanceof Mob mob) mob.restoreLeashFromSave();
  
 diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketSerializer.java b/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketSerializer.java
-index 5901037507fc498a45e1916ee97c39a3c6b4ca81..3663d7acdfa459eae3d97a0c253db05f7d87fecf 100644
+index 5901037507fc498a45e1916ee97c39a3c6b4ca81..beca29ddf5c44db95a00ee75eed7bd8c7196e36a 100644
 --- a/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketSerializer.java
 +++ b/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketSerializer.java
-@@ -1,5 +1,6 @@
- package puregero.multipaper.externalserverprotocol;
- 
-+import com.mrivanplays.multipaper.ChestBoatInventoryUpdatePacket;
- import net.minecraft.network.FriendlyByteBuf;
- 
- import java.util.ArrayList;
-@@ -79,6 +80,7 @@ public class ExternalServerPacketSerializer {
+@@ -79,6 +79,7 @@ public class ExternalServerPacketSerializer {
          addPacket(GameEventPacket.class, GameEventPacket::new);
          addPacket(PistonMoveBlockStartPacket.class, PistonMoveBlockStartPacket::new);
          addPacket(PistonMoveBlockEndPacket.class, PistonMoveBlockEndPacket::new);
-+        addPacket(ChestBoatInventoryUpdatePacket.class, ChestBoatInventoryUpdatePacket::new);
++        addPacket(EntityInventoryUpdatePacket.class, EntityInventoryUpdatePacket::new);
      }
  
      private static void addPacket(Class<? extends ExternalServerPacket> clazz, Function<FriendlyByteBuf, ExternalServerPacket> deserializer) {
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/PlayerCreatePacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/PlayerCreatePacket.java
+index e4bc6f2a4757905e304dbfe0d9bc669d878d0054..7ceb17da98e7a0522c7411b3c941e1667c76a7c6 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/PlayerCreatePacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/PlayerCreatePacket.java
+@@ -204,7 +204,7 @@ public class PlayerCreatePacket extends ExternalServerPacket {
+             if (levelChunk != null) {
+                 ExternalServerConnection[] subscribedServers = Arrays.stream(connections).filter(e -> levelChunk.externalEntitiesSubscribers.contains(e.externalServer)).toArray(ExternalServerConnection[]::new);
+                 if (subscribedServers.length > 0) {
+-                    send(new EntityUpdateNBTPacket(player.getRootVehicle()), subscribedServers);
++                    send(EntityUpdateNBTPacket.createPacket(player.getRootVehicle()), subscribedServers); // MultiPaper - MrIvanPlays - change
+                     EntityUpdateWithDependenciesPacket.sendPassengersRecursive(packet -> send(packet, subscribedServers), player.getRootVehicle());
+                 }
+             }
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/RequestEntityPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/RequestEntityPacket.java
+index 4f27d37e3fbdf1570f907d1eb5eaa24ea6d638c5..a95f4ea3645fac0291b4f6ea1a2604fddcd93ac2 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/RequestEntityPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/RequestEntityPacket.java
+@@ -58,7 +58,7 @@ public class RequestEntityPacket extends ExternalServerPacket {
+                 // Send the vehicle the entity is in
+                 entity = entity.getRootVehicle();
+ 
+-                connection.send(new EntityUpdateNBTPacket(entity));
++                connection.send(EntityUpdateNBTPacket.createPacket(entity)); // MultiPaper - MrIvanPlays - change
+ 
+                 if (!entity.getPassengers().isEmpty()) {
+                     EntityUpdateWithDependenciesPacket.sendPassengersRecursive(connection, entity);
