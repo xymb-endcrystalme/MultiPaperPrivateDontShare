@@ -6,10 +6,10 @@ Subject: [PATCH] Fixes and improvements on entities
 
 diff --git a/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java b/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..4d33d9776a1b0fc3fda6e5e1d17a0f8e7bcd4901
+index 0000000000000000000000000000000000000000..2d087814371c09fc878edede66039f0ee756b0d2
 --- /dev/null
 +++ b/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,119 @@
 +package com.mrivanplays.multipaper;
 +
 +import java.util.HashMap;
@@ -51,6 +51,7 @@ index 0000000000000000000000000000000000000000..4d33d9776a1b0fc3fda6e5e1d17a0f8e
 +                }
 +                nbt.putInt("MultiPaper.Slot", i);
 +                item.save(nbt);
++                this.items.put(i, nbt);
 +            }
 +        } else {
 +            this.empty = true;
