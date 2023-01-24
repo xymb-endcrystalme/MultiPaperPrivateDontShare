@@ -4,6 +4,130 @@ Date: Tue, 24 Jan 2023 15:08:59 +0200
 Subject: [PATCH] Fixes and improvements on entities
 
 
+diff --git a/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java b/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..65fc58b43ad469b499529bf44423224093b625f0
+--- /dev/null
++++ b/src/main/java/com/mrivanplays/multipaper/ChestBoatInventoryUpdatePacket.java
+@@ -0,0 +1,118 @@
++package com.mrivanplays.multipaper;
++
++import java.util.HashMap;
++import java.util.Map;
++import java.util.UUID;
++import net.minecraft.nbt.CompoundTag;
++import net.minecraft.network.FriendlyByteBuf;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.world.entity.Entity;
++import net.minecraft.world.entity.vehicle.ChestBoat;
++import net.minecraft.world.item.ItemStack;
++import org.bukkit.Bukkit;
++import org.bukkit.World;
++import org.bukkit.craftbukkit.CraftWorld;
++import puregero.multipaper.ExternalServerConnection;
++import puregero.multipaper.MultiPaper;
++import puregero.multipaper.externalserverprotocol.EntityRemovePacket;
++import puregero.multipaper.externalserverprotocol.ExternalServerPacket;
++
++public class ChestBoatInventoryUpdatePacket extends ExternalServerPacket {
++
++    private final String world;
++    private final UUID entityId;
++    private Map<Integer, CompoundTag> items;
++    private final boolean empty;
++
++    public ChestBoatInventoryUpdatePacket(ChestBoat entity) {
++        this.world = ((ServerLevel) entity.level).convertable.getLevelId();
++        this.entityId = entity.getUUID();
++
++        if (!entity.getItemStacks().isEmpty()) {
++            this.empty = false;
++            this.items = new HashMap<>();
++            for (int i = 0; i < 27; i++) {
++                CompoundTag nbt = new CompoundTag();
++                ItemStack item = entity.getItem(i);
++                if (item.isEmpty()) {
++                    continue;
++                }
++                nbt.putInt("MultiPaper.Slot", i);
++                item.save(nbt);
++            }
++        } else {
++            this.empty = true;
++        }
++    }
++
++    public ChestBoatInventoryUpdatePacket(FriendlyByteBuf in) {
++        this.world = in.readUtf();
++        this.entityId = in.readUUID();
++        this.empty = in.readBoolean();
++        if (!this.empty) {
++            int size = in.readInt();
++            this.items = new HashMap<>(size);
++            for (int i = 0; i < size; i++) {
++                CompoundTag nbt = in.readNbt();
++                int slot = nbt.getInt("MultiPaper.Slot");
++                nbt.remove("MultiPaper.Slot");
++                this.items.put(slot, nbt);
++            }
++        }
++    }
++
++    @Override
++    public void handle(ExternalServerConnection connection) {
++        MultiPaper.runSync(() -> {
++            World bukkitWorld = Bukkit.getWorld(this.world);
++            if (bukkitWorld instanceof CraftWorld craftWorld) {
++                ServerLevel level = craftWorld.getHandle();
++                this.updateContents(level);
++            }
++        });
++    }
++
++    @Override
++    public void write(FriendlyByteBuf out) {
++        out.writeUtf(this.world);
++        out.writeUUID(this.entityId);
++        out.writeBoolean(this.empty);
++        if (!this.empty) {
++            out.writeInt(this.items.size());
++            for (CompoundTag nbt : this.items.values()) {
++                out.writeNbt(nbt);
++            }
++        }
++    }
++
++    private void updateContents(ServerLevel level) {
++        Entity.RemovalReason removalReason = EntityRemovePacket.removedEntities.get(this.entityId);
++        if (removalReason != null && removalReason.shouldDestroy()) {
++            return;
++        }
++
++        Entity entity = level.entityManager.knownUuids.get(this.entityId);
++        if (!(entity instanceof ChestBoat chestBoat)) {
++            return;
++        }
++
++        if (this.empty) {
++            for (int i = 0; i < 27; i++) {
++                chestBoat.removeItemNoUpdate(i);
++            }
++            return;
++        }
++
++        for (int i = 0; i < 27; i++) {
++            CompoundTag itemTag = this.items.get(i);
++            if (itemTag == null && chestBoat.getItem(i) != ItemStack.EMPTY) {
++                chestBoat.setItemNoSync(i, ItemStack.EMPTY);
++                continue;
++            }
++            if (itemTag == null) {
++                continue;
++            }
++            chestBoat.setItemNoSync(i, ItemStack.of(itemTag));
++        }
++    }
++}
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
 index c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd..7753621bda74d343333f4ee5444f36b4fbbcbadb 100644
 --- a/src/main/java/net/minecraft/world/entity/Entity.java
@@ -33,6 +157,52 @@ index c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd..7753621bda74d343333f4ee5444f36b4
  
                  if (MultiPaperEntitiesHandler.getControllingPassenger(this.vehicle) instanceof ExternalPlayer newController) {
                      // Make sure we send the vehicle to the new controlling passenger, even if they don't have the chunk loaded
+diff --git a/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java b/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
+index ba14657c6911bfd54da6ee9e248b3a050455d68a..0b1711e196c6a39fb844ffca795deecc059b6d4f 100644
+--- a/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
++++ b/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
+@@ -153,19 +153,41 @@ public class ChestBoat extends Boat implements HasCustomInventoryScreen, Contain
+ 
+     @Override
+     public ItemStack removeItem(int slot, int amount) {
++        try { // MultiPaper - MrIvanPlays
+         return this.removeChestVehicleItem(slot, amount);
++        } finally { // MultiPaper start - MrIvanPlays
++            this.sendUpdatePacket();
++        } // MultiPaper end - MrIvanPlays
+     }
+ 
+     @Override
+     public ItemStack removeItemNoUpdate(int slot) {
++        try { // MultiPaper - MrIvanPlays
+         return this.removeChestVehicleItemNoUpdate(slot);
++        } finally { // MultiPaper start - MrIvanPlays
++            this.sendUpdatePacket();
++        } // MultiPaper end - MrIvanPlays
+     }
+ 
+     @Override
+     public void setItem(int slot, ItemStack stack) {
++        this.sendUpdatePacket(); // MultiPaper - MrIvanPlays
+         this.setChestVehicleItem(slot, stack);
+     }
+ 
++    // MultiPaper start - MrIvanPlays - sync inventory
++    private void sendUpdatePacket() {
++        net.minecraft.world.level.chunk.LevelChunk chunk = this.level.getChunkIfLoaded(this.blockPosition);
++        if (chunk != null) {
++            java.util.Set<puregero.multipaper.ExternalServer> servers = new java.util.HashSet<>(chunk.externalEntitiesSubscribers);
++            puregero.multipaper.MultiPaper.broadcastPacketToExternalServers(servers, () -> new com.mrivanplays.multipaper.ChestBoatInventoryUpdatePacket(this));
++        }
++    }
++    public void setItemNoSync(int slot, ItemStack item) {
++        this.setChestVehicleItem(slot, item);
++    }
++    // MultiPaper end - MrIvanPlays
++
+     @Override
+     public SlotAccess getSlot(int mappedIndex) {
+         return this.getChestVehicleSlot(mappedIndex);
 diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java b/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
 index 707374502a35ced453bc861a0a2cdba7ac766d4f..19c432e9252264a2efcd835211eb3ddfc430e85c 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/storage/EntityStorage.java
@@ -81,3 +251,22 @@ index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..3d13840e6378820740d47ab18ccb28f6
  
          if (entity instanceof Mob mob) mob.restoreLeashFromSave();
  
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketSerializer.java b/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketSerializer.java
+index 5901037507fc498a45e1916ee97c39a3c6b4ca81..3663d7acdfa459eae3d97a0c253db05f7d87fecf 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketSerializer.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/ExternalServerPacketSerializer.java
+@@ -1,5 +1,6 @@
+ package puregero.multipaper.externalserverprotocol;
+ 
++import com.mrivanplays.multipaper.ChestBoatInventoryUpdatePacket;
+ import net.minecraft.network.FriendlyByteBuf;
+ 
+ import java.util.ArrayList;
+@@ -79,6 +80,7 @@ public class ExternalServerPacketSerializer {
+         addPacket(GameEventPacket.class, GameEventPacket::new);
+         addPacket(PistonMoveBlockStartPacket.class, PistonMoveBlockStartPacket::new);
+         addPacket(PistonMoveBlockEndPacket.class, PistonMoveBlockEndPacket::new);
++        addPacket(ChestBoatInventoryUpdatePacket.class, ChestBoatInventoryUpdatePacket::new);
+     }
+ 
+     private static void addPacket(Class<? extends ExternalServerPacket> clazz, Function<FriendlyByteBuf, ExternalServerPacket> deserializer) {
