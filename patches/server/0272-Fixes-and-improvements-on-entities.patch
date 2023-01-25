@@ -638,35 +638,33 @@ index 0000000000000000000000000000000000000000..131d5892892a7e144e6d605d9710ad2c
 +    }
 +}
 diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java
-index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..e96e8b98dd1416e9781049fd50d5d0cc9d17f914 100644
+index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..f662919a375bca37c6f7d08b46874d38a3be9934 100644
 --- a/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java
 +++ b/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateNBTPacket.java
-@@ -21,15 +21,15 @@ import java.util.UUID;
+@@ -25,11 +25,18 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
  
- public class EntityUpdateNBTPacket extends ExternalServerPacket {
- 
--    private static final Logger LOGGER = LogManager.getLogger(EntityUpdateNBTPacket.class.getSimpleName());
--
--    private final String world;
--    private final UUID uuid;
+     private final String world;
+     private final UUID uuid;
 -    private final byte[] data;
--
++    // MultiPaper start - MrIvanPlays - improve
++    private final CompoundTag data;
+ 
 -    public EntityUpdateNBTPacket(Entity entity) {
 -        this.world = ((ServerLevel) entity.level).convertable.getLevelId();
 -        this.uuid = entity.getUUID();
-+    // MultiPaper start - MrIvanPlays - construct this differently
-+    private EntityUpdateNBTPacket(String world, UUID uuid, byte[] data) {
++    private EntityUpdateNBTPacket(String world, UUID uuid, CompoundTag data) {
 +        this.world = world;
 +        this.uuid = uuid;
 +        this.data = data;
 +    }
++
 +    public static ExternalServerPacket createPacket(Entity entity) {
 +        String world = ((ServerLevel) entity.level).convertable.getLevelId();
 +        UUID uuid = entity.getUUID();
  
          CompoundTag tag = new CompoundTag();
  
-@@ -38,15 +38,27 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+@@ -38,43 +45,42 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
          entity.isSyncing = false;
  
          if (tag.getAllKeys().isEmpty()) {
@@ -675,28 +673,52 @@ index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..e96e8b98dd1416e9781049fd50d5d0cc
 +            return new EntityRemovePacket(world, uuid);
          }
  
-+        byte[] data;
-         try {
+-        try {
 -            this.data = MultiPaper.nbtToBytes(tag);
-+            data = MultiPaper.nbtToBytes(tag);
-         } catch (IOException e) {
-             throw new RuntimeException(e);
-         }
-+        return new EntityUpdateNBTPacket(world, uuid, data);
+-        } catch (IOException e) {
+-            throw new RuntimeException(e);
+-        }
++        return new EntityUpdateNBTPacket(world, uuid, tag);
      }
 +    // MultiPaper end - MrIvanPlays
-+
-+    private static final Logger LOGGER = LogManager.getLogger(EntityUpdateNBTPacket.class.getSimpleName());
-+
-+    private final String world;
-+    private final UUID uuid;
-+    private final byte[] data;
-+
-+    // MultiPaper - MrIvanPlays - conflict on change - we're gonna construct this packet differently
  
      public EntityUpdateNBTPacket(FriendlyByteBuf in) {
          this.world = in.readUtf();
-@@ -86,6 +98,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+         this.uuid = in.readUUID();
+-        this.data = in.readByteArray();
++        this.data = in.readNbt(); // MultiPaper - MrIvanPlays
+     }
+ 
+     @Override
+     public void write(FriendlyByteBuf out) {
+         out.writeUtf(world);
+         out.writeUUID(uuid);
+-        out.writeByteArray(data);
++        out.writeNbt(data); // MultiPaper - MrIvanPlays
+     }
+ 
+     @Override
+     public void handle(ExternalServerConnection connection) {
+         MultiPaper.runSync(() -> {
+-            try {
++            //try { // MultiPaper - MrIvanPlays
+                 World bukkitWorld = Bukkit.getWorld(world);
+ 
+                 if (bukkitWorld instanceof CraftWorld craftWorld) {
+                     ServerLevel level = craftWorld.getHandle();
+-                    CompoundTag tag = MultiPaper.nbtFromBytes(data);
+-                    loadEntity(level, tag, uuid);
++                    loadEntity(level, data, uuid); // MultiPaper - MrIvanPlays
+                 }
++                /*
+             } catch (IOException e) {
+                 e.printStackTrace();
+             }
++                 */
+         });
+     }
+ 
+@@ -86,6 +92,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
          }
  
          Entity entity = level.entityManager.knownUuids.get(uuid);
@@ -704,7 +726,7 @@ index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..e96e8b98dd1416e9781049fd50d5d0cc
  
          if (entity == null) {
              entity = EntityType.loadEntityRecursive(tag, level, entity2 -> {
-@@ -99,6 +112,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+@@ -99,6 +106,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
                      return null;
                  }
              });
@@ -712,7 +734,7 @@ index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..e96e8b98dd1416e9781049fd50d5d0cc
          } else if (entity instanceof ServerPlayer player) {
              new Exception("Tried to update the nbt of player " + player.getScoreboardName() + " to " + tag).printStackTrace();
          } else {
-@@ -108,6 +122,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+@@ -108,6 +116,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
              }
          }
  
@@ -720,7 +742,7 @@ index 2b9772a0a9fa60794d27cdcb632e6d26f0dd32e5..e96e8b98dd1416e9781049fd50d5d0cc
          if (tag.contains("Passengers", 9)) {
              ListTag nbttaglist = tag.getList("Passengers", 10);
  
-@@ -120,6 +135,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
+@@ -120,6 +129,7 @@ public class EntityUpdateNBTPacket extends ExternalServerPacket {
                  }
              }
          }
