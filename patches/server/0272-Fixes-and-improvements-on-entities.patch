@@ -88,7 +88,7 @@ index a3f3e06679cef10f50346e9cc6672ec91c6f04a6..7155ea5e935d2a808ce917ff173dc601
              }
          }
 diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
-index 03c56fa59c547a434ac17179680bad5fb196a49c..2e4a3abc35f0e852a09821d2d0c206e4d65fd42e 100644
+index 03c56fa59c547a434ac17179680bad5fb196a49c..ad4e3a8350926ccd313155918c1fabfc15e99ca7 100644
 --- a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
 +++ b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
 @@ -73,7 +73,7 @@ import net.minecraft.world.phys.AABB;
@@ -100,15 +100,32 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..2e4a3abc35f0e852a09821d2d0c206e4
  
      public static final int EQUIPMENT_SLOT_OFFSET = 400;
      public static final int CHEST_SLOT_OFFSET = 499;
-@@ -120,6 +120,31 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+@@ -120,6 +120,46 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
          this.createInventory();
      }
  
 +    // MultiPaper start - MrIvanPlays - proper setItem methods
-+    @Override public ItemStack getItem(int slot) { return this.inventory.getItem(slot); }
-+    @Override public boolean isInventoryEmpty() { return this.inventory.isEmpty(); }
-+    @Override public void setItemNoSync(int slot, ItemStack item) { this.inventory.setItem(slot, item); }
-+    @Override public void removeItemNoUpdateNoSync(int slot) { this.inventory.removeItemNoUpdate(slot); }
++    @Override public ItemStack getItem(int slot) {
++        if (this.inventory == null) {
++            return null;
++        }
++        return this.inventory.getItem(slot);
++    }
++    @Override public boolean isInventoryEmpty() {
++        return this.inventory == null || this.inventory.isEmpty();
++    }
++    @Override public void setItemNoSync(int slot, ItemStack item) {
++        if (this.inventory == null) {
++            return;
++        }
++        this.inventory.setItem(slot, item);
++    }
++    @Override public void removeItemNoUpdateNoSync(int slot) {
++        if (this.inventory == null) {
++            return;
++        }
++        this.inventory.removeItemNoUpdate(slot);
++    }
 +    public void setItem(int slot, ItemStack item) {
 +        try {
 +            this.setItemNoSync(slot, item);
@@ -116,10 +133,8 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..2e4a3abc35f0e852a09821d2d0c206e4
 +            puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
 +        }
 +    }
-+    @javax.annotation.Nullable
-+    private static it.unimi.dsi.fastutil.ints.IntList slots = null;
-+    @Override
-+    public it.unimi.dsi.fastutil.ints.IntList getSlots() {
++    @javax.annotation.Nullable private static it.unimi.dsi.fastutil.ints.IntList slots = null;
++    @Override public it.unimi.dsi.fastutil.ints.IntList getSlots() {
 +        if (slots == null) {
 +            slots = it.unimi.dsi.fastutil.ints.IntList.of();
 +            for (int i = 0; i < 16; i++) {
@@ -132,7 +147,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..2e4a3abc35f0e852a09821d2d0c206e4
      @Override
      protected void registerGoals() {
          this.goalSelector.addGoal(1, new PanicGoal(this, 1.2D));
-@@ -215,7 +240,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+@@ -215,7 +255,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
  
      @Override
      public void equipSaddle(@Nullable SoundSource sound) {
@@ -141,7 +156,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..2e4a3abc35f0e852a09821d2d0c206e4
          if (sound != null) {
              this.level.playSound((Player) null, (Entity) this, SoundEvents.HORSE_SADDLE, sound, 0.5F, 1.0F);
          }
-@@ -307,7 +332,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+@@ -307,7 +347,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
                  ItemStack itemstack = inventorysubcontainer.getItem(j);
  
                  if (!itemstack.isEmpty()) {
@@ -150,7 +165,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..2e4a3abc35f0e852a09821d2d0c206e4
                  }
              }
          }
-@@ -845,7 +870,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+@@ -845,7 +885,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
              ItemStack itemstack = ItemStack.of(nbt.getCompound("SaddleItem"));
  
              if (itemstack.is(Items.SADDLE)) {
@@ -159,7 +174,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..2e4a3abc35f0e852a09821d2d0c206e4
              }
          }
  
-@@ -1031,7 +1056,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+@@ -1031,7 +1071,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
                  if (!predicate.test(stack)) {
                      return false;
                  } else {
@@ -431,7 +446,7 @@ index ff7c1726c323a104bac9a9a8b3a8ea6d6414dc75..40ae30fb0f2a77651a768854d8948a88
          });
 diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..2588c85e9a9008bbc95b2384d95638d36d24137f
+index 0000000000000000000000000000000000000000..e91d12d797ba63fe877ab5b6dcd6e546f3c1ed3a
 --- /dev/null
 +++ b/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java
 @@ -0,0 +1,141 @@
@@ -474,7 +489,7 @@ index 0000000000000000000000000000000000000000..2588c85e9a9008bbc95b2384d95638d3
 +            for (int i : syncable.getSlots()) {
 +                CompoundTag nbt = new CompoundTag();
 +                ItemStack item = syncable.getItem(i);
-+                if (item.isEmpty()) {
++                if (item == null || item.isEmpty()) {
 +                    continue;
 +                }
 +                nbt.putInt("MultiPaper.Slot", i);
