@@ -17,10 +17,10 @@ index 0c11e285dd71a75d471357b16e025e07f0e47ac7..d1f6ffa921a03faeba6c5370f10bd135
      public static final BlockPos END_SPAWN_POINT = new BlockPos(100, 50, 0);
      private static final int MIN_RAIN_DELAY_TIME = 12000;
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
-index c240d18a48a2d4795d0fe75defc0a02ab693a4ce..c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd 100644
+index 8c7481525cac94a1d343a740633c66b05bd3ba59..71e2bbe10fa4bdb3410bf77e06eb4c899bf235b1 100644
 --- a/src/main/java/net/minecraft/world/entity/Entity.java
 +++ b/src/main/java/net/minecraft/world/entity/Entity.java
-@@ -3038,7 +3038,25 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+@@ -3036,7 +3036,25 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
                  ResourceKey<Level> resourcekey = this.level.getTypeKey() == LevelStem.NETHER ? Level.OVERWORLD : Level.NETHER; // CraftBukkit
                  ServerLevel worldserver1 = minecraftserver.getLevel(resourcekey);
  
@@ -47,7 +47,7 @@ index c240d18a48a2d4795d0fe75defc0a02ab693a4ce..c7ea15ca0c6594e832d58ec4aed5c86d
                      this.level.getProfiler().push("portal");
                      this.portalTime = i;
                      // Paper start
-@@ -3058,9 +3076,14 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+@@ -3056,9 +3074,14 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
                      } // Paper
                      // CraftBukkit end
                      this.level.getProfiler().pop();
