@@ -29,10 +29,10 @@ index 0000000000000000000000000000000000000000..72197a67c00f927e839ee06d8858c216
 +
 +}
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
-index c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd..0964cfc5cd31f32364d0f3d772fef977cd017df4 100644
+index 10bd701f7af1b91409cd4796130afacf3331d598..8f5b0b5dc90882aa105af6aba75935e42e7f8cfd 100644
 --- a/src/main/java/net/minecraft/world/entity/Entity.java
 +++ b/src/main/java/net/minecraft/world/entity/Entity.java
-@@ -2806,7 +2806,7 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+@@ -2805,7 +2805,7 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
                  // MultiPaper start - inform the player's server that they are now riding an entity and hand them the entity's data
                  Entity rootVehicle = this.getRootVehicle();
                  if (MultiPaperEntitiesHandler.getControllingPassenger(rootVehicle) == this && MultiPaper.isChunkLocal(level.getChunkIfLoaded(rootVehicle.blockPosition)) && this instanceof ExternalPlayer player) {
@@ -41,7 +41,7 @@ index c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd..0964cfc5cd31f32364d0f3d772fef977
                      EntityUpdateWithDependenciesPacket.sendPassengersRecursive(player.externalServerConnection, rootVehicle);
                  }
                  // MultiPaper end - inform the player's server that they are now riding an entity and hand them the entity's data
-@@ -2837,7 +2837,11 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+@@ -2836,7 +2836,11 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
      public void stopRiding(boolean suppressCancellation) {
          // Paper end
          if (this.vehicle != null) {
@@ -54,7 +54,7 @@ index c7ea15ca0c6594e832d58ec4aed5c86d0d2052dd..0964cfc5cd31f32364d0f3d772fef977
              Entity entity = this.vehicle;
  
              this.vehicle = null;
-@@ -2845,16 +2849,16 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+@@ -2844,16 +2848,16 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
  
              // MultiPaper start - inform other servers that the player is no longer riding the entity and hand them the entity's data
              LevelChunk chunk = level.getChunkIfLoaded(entity.blockPosition);
