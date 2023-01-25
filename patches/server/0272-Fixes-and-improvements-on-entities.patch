@@ -6,7 +6,7 @@ Subject: [PATCH] Fixes and improvements on entities
 
 diff --git a/src/main/java/com/mrivanplays/multipaper/EntityInventorySyncable.java b/src/main/java/com/mrivanplays/multipaper/EntityInventorySyncable.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..72197a67c00f927e839ee06d8858c2161fbf6afa
+index 0000000000000000000000000000000000000000..a8539e3131296297af6466d77ba6c0187e5a6183
 --- /dev/null
 +++ b/src/main/java/com/mrivanplays/multipaper/EntityInventorySyncable.java
 @@ -0,0 +1,18 @@
@@ -25,7 +25,7 @@ index 0000000000000000000000000000000000000000..72197a67c00f927e839ee06d8858c216
 +
 +    void setItemNoSync(int slot, ItemStack item);
 +
-+    void removeItemNoUpdateNoSync(int slot);
++    void clearContent();
 +
 +}
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
@@ -74,6 +74,31 @@ index 10bd701f7af1b91409cd4796130afacf3331d598..8f5b0b5dc90882aa105af6aba75935e4
                  EntityUpdateWithDependenciesPacket.sendPassengersRecursive(packet -> MultiPaper.broadcastPacketToExternalServers(servers, packet), entity.getRootVehicle());
              }
              // MultiPaper end - inform other servers that the player is no longer riding the entity and hand them the entity's data
+diff --git a/src/main/java/net/minecraft/world/entity/Mob.java b/src/main/java/net/minecraft/world/entity/Mob.java
+index fce52d4e7571cf857fc4019823912cd2600eb405..f7860000e5daaa31acbee016113c23336fa94534 100644
+--- a/src/main/java/net/minecraft/world/entity/Mob.java
++++ b/src/main/java/net/minecraft/world/entity/Mob.java
+@@ -1013,6 +1013,8 @@ public abstract class Mob extends LivingEntity {
+ 
+     @Override
+     public void setItemSlot(EquipmentSlot slot, ItemStack stack) {
++        // MultiPaper start - MrIvanPlays - sync this for EntityInventorySyncable
++        try {
+         this.verifyEquippedItem(stack);
+         switch (slot.getType()) {
+             case HAND:
+@@ -1021,6 +1023,11 @@ public abstract class Mob extends LivingEntity {
+             case ARMOR:
+                 this.onEquipItem(slot, (ItemStack) this.armorItems.set(slot.getIndex(), stack), stack);
+         }
++        } finally {
++            if (this instanceof com.mrivanplays.multipaper.EntityInventorySyncable) {
++                puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
++            }
++        } // MultiPaper end - MrIvanPlays
+ 
+     }
+ 
 diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractChestedHorse.java b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractChestedHorse.java
 index a3f3e06679cef10f50346e9cc6672ec91c6f04a6..7155ea5e935d2a808ce917ff173dc601084201e0 100644
 --- a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractChestedHorse.java
@@ -88,7 +113,7 @@ index a3f3e06679cef10f50346e9cc6672ec91c6f04a6..7155ea5e935d2a808ce917ff173dc601
              }
          }
 diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
-index 03c56fa59c547a434ac17179680bad5fb196a49c..ad4e3a8350926ccd313155918c1fabfc15e99ca7 100644
+index 03c56fa59c547a434ac17179680bad5fb196a49c..512defe4c24b341a687a4f1b410ef0446879134a 100644
 --- a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
 +++ b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
 @@ -73,7 +73,7 @@ import net.minecraft.world.phys.AABB;
@@ -120,11 +145,11 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..ad4e3a8350926ccd313155918c1fabfc
 +        }
 +        this.inventory.setItem(slot, item);
 +    }
-+    @Override public void removeItemNoUpdateNoSync(int slot) {
++    @Override public void clearContent() {
 +        if (this.inventory == null) {
 +            return;
 +        }
-+        this.inventory.removeItemNoUpdate(slot);
++        this.inventory.clearContent();
 +    }
 +    public void setItem(int slot, ItemStack item) {
 +        try {
@@ -136,7 +161,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..ad4e3a8350926ccd313155918c1fabfc
 +    @javax.annotation.Nullable private static it.unimi.dsi.fastutil.ints.IntList slots = null;
 +    @Override public it.unimi.dsi.fastutil.ints.IntList getSlots() {
 +        if (slots == null) {
-+            slots = it.unimi.dsi.fastutil.ints.IntList.of();
++            slots = it.unimi.dsi.fastutil.ints.IntArrayList.of();
 +            for (int i = 0; i < 16; i++) {
 +                slots.add(i);
 +            }
@@ -184,7 +209,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..ad4e3a8350926ccd313155918c1fabfc
                      return true;
                  }
 diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java b/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java
-index 3730f9f61136abda0fbb8414514ed1d977d9bdfa..bd1c8bd0f2608a78ba82bfb3773d371c6de367ba 100644
+index 3730f9f61136abda0fbb8414514ed1d977d9bdfa..7647ad650875921c46187e939d3aa1cad24b2caf 100644
 --- a/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java
 +++ b/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java
 @@ -42,6 +42,21 @@ public class Horse extends AbstractHorse {
@@ -197,7 +222,7 @@ index 3730f9f61136abda0fbb8414514ed1d977d9bdfa..bd1c8bd0f2608a78ba82bfb3773d371c
 +    @Override
 +    public it.unimi.dsi.fastutil.ints.IntList getSlots() {
 +        if (slots == null) {
-+            slots = it.unimi.dsi.fastutil.ints.IntList.of();
++            slots = it.unimi.dsi.fastutil.ints.IntArrayList.of();
 +            for (int i = 0; i < 17; i++) {
 +                slots.add(i);
 +            }
@@ -232,7 +257,7 @@ index ed8dfabdad28e27054aa0679e06fcf87dc049f77..80a468880d06bb64477fe949780f22e7
  
          this.updateContainerEquipment();
 diff --git a/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java b/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java
-index 16137ad9ae1f7a8a9688b50d8f1deca2dadb57e9..27fabd6dd8fa6a46103dccb31a645755ff02e376 100644
+index 16137ad9ae1f7a8a9688b50d8f1deca2dadb57e9..bac839ea600db28a4cac8988da17ea410fd47501 100644
 --- a/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java
 +++ b/src/main/java/net/minecraft/world/entity/vehicle/AbstractMinecartContainer.java
 @@ -25,7 +25,7 @@ import org.bukkit.entity.HumanEntity;
@@ -244,7 +269,7 @@ index 16137ad9ae1f7a8a9688b50d8f1deca2dadb57e9..27fabd6dd8fa6a46103dccb31a645755
  
      // Airplane start
      private NonNullList<ItemStack> itemStacks;
-@@ -117,19 +117,58 @@ public abstract class AbstractMinecartContainer extends AbstractMinecart impleme
+@@ -117,19 +117,54 @@ public abstract class AbstractMinecartContainer extends AbstractMinecart impleme
          return this.getChestVehicleItem(slot);
      }
  
@@ -257,16 +282,12 @@ index 16137ad9ae1f7a8a9688b50d8f1deca2dadb57e9..27fabd6dd8fa6a46103dccb31a645755
 +    public void setItemNoSync(int slot, ItemStack item) {
 +        this.setChestVehicleItem(slot, item);
 +    }
-+    @Override
-+    public void removeItemNoUpdateNoSync(int slot) {
-+        this.removeChestVehicleItemNoUpdate(slot);
-+    }
 +    @javax.annotation.Nullable
 +    private static it.unimi.dsi.fastutil.ints.IntList slots = null;
 +    @Override
 +    public it.unimi.dsi.fastutil.ints.IntList getSlots() {
 +        if (slots == null) {
-+            slots = it.unimi.dsi.fastutil.ints.IntList.of();
++            slots = it.unimi.dsi.fastutil.ints.IntArrayList.of();
 +            for (int i = 0; i < this.getContainerSize(); i++) {
 +                slots.add(i);
 +            }
@@ -304,7 +325,7 @@ index 16137ad9ae1f7a8a9688b50d8f1deca2dadb57e9..27fabd6dd8fa6a46103dccb31a645755
  
      @Override
 diff --git a/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java b/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
-index ba14657c6911bfd54da6ee9e248b3a050455d68a..43c2282856ccdd8295f36d86d5e9178f65e1765e 100644
+index ba14657c6911bfd54da6ee9e248b3a050455d68a..2c50a11065ce9981ee8ecc0fb15e352f0e233e1f 100644
 --- a/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
 +++ b/src/main/java/net/minecraft/world/entity/vehicle/ChestBoat.java
 @@ -31,7 +31,7 @@ import org.bukkit.entity.HumanEntity;
@@ -316,7 +337,7 @@ index ba14657c6911bfd54da6ee9e248b3a050455d68a..43c2282856ccdd8295f36d86d5e9178f
  
      private static final int CONTAINER_SIZE = 27;
      private NonNullList<ItemStack> itemStacks;
-@@ -153,19 +153,53 @@ public class ChestBoat extends Boat implements HasCustomInventoryScreen, Contain
+@@ -153,19 +153,49 @@ public class ChestBoat extends Boat implements HasCustomInventoryScreen, Contain
  
      @Override
      public ItemStack removeItem(int slot, int amount) {
@@ -349,7 +370,7 @@ index ba14657c6911bfd54da6ee9e248b3a050455d68a..43c2282856ccdd8295f36d86d5e9178f
 +    @Override
 +    public it.unimi.dsi.fastutil.ints.IntList getSlots() {
 +        if (slots == null) {
-+            slots = it.unimi.dsi.fastutil.ints.IntList.of();
++            slots = it.unimi.dsi.fastutil.ints.IntArrayList.of();
 +            for (int i = 0; i < 27; i++) {
 +                slots.add(i);
 +            }
@@ -357,10 +378,6 @@ index ba14657c6911bfd54da6ee9e248b3a050455d68a..43c2282856ccdd8295f36d86d5e9178f
 +        return slots;
 +    }
 +    @Override public boolean isInventoryEmpty() { return this.itemStacks.isEmpty(); }
-+    @Override
-+    public void removeItemNoUpdateNoSync(int slot) {
-+        this.removeChestVehicleItemNoUpdate(slot);
-+    }
 +    @Override
 +    public void setItemNoSync(int slot, ItemStack item) {
 +        this.setChestVehicleItem(slot, item);
@@ -446,10 +463,10 @@ index ff7c1726c323a104bac9a9a8b3a8ea6d6414dc75..40ae30fb0f2a77651a768854d8948a88
          });
 diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..e91d12d797ba63fe877ab5b6dcd6e546f3c1ed3a
+index 0000000000000000000000000000000000000000..554530f4d6ccd7da679da269dbcd2ce23047afbb
 --- /dev/null
 +++ b/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,139 @@
 +package puregero.multipaper.externalserverprotocol;
 +
 +import com.mrivanplays.multipaper.EntityInventorySyncable;
@@ -572,9 +589,7 @@ index 0000000000000000000000000000000000000000..e91d12d797ba63fe877ab5b6dcd6e546
 +        }
 +
 +        if (this.empty) {
-+            for (int i : syncable.getSlots()) {
-+                syncable.removeItemNoUpdateNoSync(i);
-+            }
++            syncable.clearContent();
 +            return;
 +        }
 +
