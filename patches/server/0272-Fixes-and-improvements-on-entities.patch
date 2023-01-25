@@ -75,10 +75,40 @@ index 10bd701f7af1b91409cd4796130afacf3331d598..8f5b0b5dc90882aa105af6aba75935e4
              }
              // MultiPaper end - inform other servers that the player is no longer riding the entity and hand them the entity's data
 diff --git a/src/main/java/net/minecraft/world/entity/Mob.java b/src/main/java/net/minecraft/world/entity/Mob.java
-index fce52d4e7571cf857fc4019823912cd2600eb405..f7860000e5daaa31acbee016113c23336fa94534 100644
+index fce52d4e7571cf857fc4019823912cd2600eb405..c5ea4b2a990ede0deddaff549111a8f52f039559 100644
 --- a/src/main/java/net/minecraft/world/entity/Mob.java
 +++ b/src/main/java/net/minecraft/world/entity/Mob.java
-@@ -1013,6 +1013,8 @@ public abstract class Mob extends LivingEntity {
+@@ -552,17 +552,29 @@ public abstract class Mob extends LivingEntity {
+         if (nbt.contains("ArmorItems", 9)) {
+             nbttaglist = nbt.getList("ArmorItems", 10);
+ 
++            try { // MultiPaper start - MrIvanPlays - sync
+             for (i = 0; i < this.armorItems.size(); ++i) {
+                 this.armorItems.set(i, ItemStack.of(nbttaglist.getCompound(i)));
+             }
++            } finally {
++                if (this instanceof com.mrivanplays.multipaper.EntityInventorySyncable) {
++                    puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
++                }
++            } // MultiPaper end - MrIvanPlays
+         }
+ 
+         if (nbt.contains("HandItems", 9)) {
+             nbttaglist = nbt.getList("HandItems", 10);
+ 
++            try { // MultiPaper start - MrIvanPlays - sync
+             for (i = 0; i < this.handItems.size(); ++i) {
+                 this.handItems.set(i, ItemStack.of(nbttaglist.getCompound(i)));
+             }
++            } finally {
++                if (this instanceof com.mrivanplays.multipaper.EntityInventorySyncable) {
++                    puregero.multipaper.externalserverprotocol.EntityInventoryUpdatePacket.sendPacket(this);
++                }
++            } // MultiPaper end - MrIvanPlays
+         }
+ 
+         if (nbt.contains("ArmorDropChances", 9)) {
+@@ -1013,6 +1025,8 @@ public abstract class Mob extends LivingEntity {
  
      @Override
      public void setItemSlot(EquipmentSlot slot, ItemStack stack) {
@@ -87,7 +117,7 @@ index fce52d4e7571cf857fc4019823912cd2600eb405..f7860000e5daaa31acbee016113c2333
          this.verifyEquippedItem(stack);
          switch (slot.getType()) {
              case HAND:
-@@ -1021,6 +1023,11 @@ public abstract class Mob extends LivingEntity {
+@@ -1021,6 +1035,11 @@ public abstract class Mob extends LivingEntity {
              case ARMOR:
                  this.onEquipItem(slot, (ItemStack) this.armorItems.set(slot.getIndex(), stack), stack);
          }
@@ -113,7 +143,7 @@ index a3f3e06679cef10f50346e9cc6672ec91c6f04a6..7155ea5e935d2a808ce917ff173dc601
              }
          }
 diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
-index 03c56fa59c547a434ac17179680bad5fb196a49c..512defe4c24b341a687a4f1b410ef0446879134a 100644
+index 03c56fa59c547a434ac17179680bad5fb196a49c..ed8c12f9f73633259f2ca07fe6065935aedf3065 100644
 --- a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
 +++ b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
 @@ -73,7 +73,7 @@ import net.minecraft.world.phys.AABB;
@@ -162,7 +192,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..512defe4c24b341a687a4f1b410ef044
 +    @Override public it.unimi.dsi.fastutil.ints.IntList getSlots() {
 +        if (slots == null) {
 +            slots = it.unimi.dsi.fastutil.ints.IntArrayList.of();
-+            for (int i = 0; i < 16; i++) {
++            for (int i = 0; i < this.getInventorySize(); i++) {
 +                slots.add(i);
 +            }
 +        }
@@ -209,32 +239,10 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..512defe4c24b341a687a4f1b410ef044
                      return true;
                  }
 diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java b/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java
-index 3730f9f61136abda0fbb8414514ed1d977d9bdfa..7647ad650875921c46187e939d3aa1cad24b2caf 100644
+index 3730f9f61136abda0fbb8414514ed1d977d9bdfa..ec8bcffce08e28023b289e87fdd4ecf1bfd0c0d7 100644
 --- a/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java
 +++ b/src/main/java/net/minecraft/world/entity/animal/horse/Horse.java
-@@ -42,6 +42,21 @@ public class Horse extends AbstractHorse {
-         super(type, world);
-     }
- 
-+    // MultiPaper start - MrIvanPlays - implement getSlots
-+    @javax.annotation.Nullable
-+    private static it.unimi.dsi.fastutil.ints.IntList slots = null;
-+    @Override
-+    public it.unimi.dsi.fastutil.ints.IntList getSlots() {
-+        if (slots == null) {
-+            slots = it.unimi.dsi.fastutil.ints.IntArrayList.of();
-+            for (int i = 0; i < 17; i++) {
-+                slots.add(i);
-+            }
-+        }
-+        return slots;
-+    }
-+    // MultiPaper end - MrIvanPlays
-+
-     @Override
-     protected void randomizeAttributes(RandomSource random) {
-         this.getAttribute(Attributes.MAX_HEALTH).setBaseValue((double)this.generateRandomMaxHealth(random));
-@@ -82,7 +97,7 @@ public class Horse extends AbstractHorse {
+@@ -82,7 +82,7 @@ public class Horse extends AbstractHorse {
          if (nbt.contains("ArmorItem", 10)) {
              ItemStack itemStack = ItemStack.of(nbt.getCompound("ArmorItem"));
              if (!itemStack.isEmpty() && this.isArmor(itemStack)) {
@@ -463,10 +471,10 @@ index ff7c1726c323a104bac9a9a8b3a8ea6d6414dc75..40ae30fb0f2a77651a768854d8948a88
          });
 diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..554530f4d6ccd7da679da269dbcd2ce23047afbb
+index 0000000000000000000000000000000000000000..971efb89cb44ed42cbdc490fefa2bf097d0d604e
 --- /dev/null
 +++ b/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,137 @@
 +package puregero.multipaper.externalserverprotocol;
 +
 +import com.mrivanplays.multipaper.EntityInventorySyncable;
@@ -518,11 +526,9 @@ index 0000000000000000000000000000000000000000..554530f4d6ccd7da679da269dbcd2ce2
 +            empty = true;
 +        }
 +
-+        LevelChunk chunk = entity.level.getChunkIfLoaded(entity.blockPosition);
-+        if (chunk != null) {
-+            Set<ExternalServer> servers = new HashSet<>(chunk.externalEntitiesSubscribers);
-+            MultiPaper.broadcastPacketToExternalServers(servers, () -> new EntityInventoryUpdatePacket(world, entityId, items, empty));
-+        }
++        LevelChunk chunk = entity.level.getChunkAt(entity.blockPosition);
++        Set<ExternalServer> servers = new HashSet<>(chunk.externalEntitiesSubscribers);
++        MultiPaper.broadcastPacketToExternalServers(servers, () -> new EntityInventoryUpdatePacket(world, entityId, items, empty));
 +    }
 +
 +    private final String world;
