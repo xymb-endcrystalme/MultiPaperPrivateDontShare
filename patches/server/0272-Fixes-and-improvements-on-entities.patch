@@ -6,10 +6,10 @@ Subject: [PATCH] Fixes and improvements on entities
 
 diff --git a/src/main/java/com/mrivanplays/multipaper/EntityInventorySyncable.java b/src/main/java/com/mrivanplays/multipaper/EntityInventorySyncable.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..43dbbe5073d3ac3f99c2e2f0b35f676d4ef5686c
+index 0000000000000000000000000000000000000000..7dcf12e9f97630272e6be814afdccd1e243e2c41
 --- /dev/null
 +++ b/src/main/java/com/mrivanplays/multipaper/EntityInventorySyncable.java
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,20 @@
 +package com.mrivanplays.multipaper;
 +
 +import it.unimi.dsi.fastutil.ints.IntList;
@@ -28,8 +28,6 @@ index 0000000000000000000000000000000000000000..43dbbe5073d3ac3f99c2e2f0b35f676d
 +    void setItemNoSync(int slot, ItemStack item);
 +
 +    void clearContent();
-+
-+    List<HumanEntity> getViewers();
 +
 +}
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
@@ -147,7 +145,7 @@ index a3f3e06679cef10f50346e9cc6672ec91c6f04a6..7155ea5e935d2a808ce917ff173dc601
              }
          }
 diff --git a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
-index 03c56fa59c547a434ac17179680bad5fb196a49c..03223e238bc87bff53808a45cd90ce1e024a3b5e 100644
+index 03c56fa59c547a434ac17179680bad5fb196a49c..ed8c12f9f73633259f2ca07fe6065935aedf3065 100644
 --- a/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
 +++ b/src/main/java/net/minecraft/world/entity/animal/horse/AbstractHorse.java
 @@ -73,7 +73,7 @@ import net.minecraft.world.phys.AABB;
@@ -159,7 +157,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..03223e238bc87bff53808a45cd90ce1e
  
      public static final int EQUIPMENT_SLOT_OFFSET = 400;
      public static final int CHEST_SLOT_OFFSET = 499;
-@@ -120,6 +120,47 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+@@ -120,6 +120,46 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
          this.createInventory();
      }
  
@@ -179,7 +177,6 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..03223e238bc87bff53808a45cd90ce1e
 +        }
 +        this.inventory.setItem(slot, item);
 +    }
-+    @Override public java.util.List<org.bukkit.entity.HumanEntity> getViewers() { return this.inventory == null ? java.util.Collections.emptyList() : this.inventory.getViewers(); }
 +    @Override public void clearContent() {
 +        if (this.inventory == null) {
 +            return;
@@ -207,7 +204,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..03223e238bc87bff53808a45cd90ce1e
      @Override
      protected void registerGoals() {
          this.goalSelector.addGoal(1, new PanicGoal(this, 1.2D));
-@@ -215,7 +256,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+@@ -215,7 +255,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
  
      @Override
      public void equipSaddle(@Nullable SoundSource sound) {
@@ -216,7 +213,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..03223e238bc87bff53808a45cd90ce1e
          if (sound != null) {
              this.level.playSound((Player) null, (Entity) this, SoundEvents.HORSE_SADDLE, sound, 0.5F, 1.0F);
          }
-@@ -307,7 +348,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+@@ -307,7 +347,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
                  ItemStack itemstack = inventorysubcontainer.getItem(j);
  
                  if (!itemstack.isEmpty()) {
@@ -225,7 +222,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..03223e238bc87bff53808a45cd90ce1e
                  }
              }
          }
-@@ -845,7 +886,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+@@ -845,7 +885,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
              ItemStack itemstack = ItemStack.of(nbt.getCompound("SaddleItem"));
  
              if (itemstack.is(Items.SADDLE)) {
@@ -234,7 +231,7 @@ index 03c56fa59c547a434ac17179680bad5fb196a49c..03223e238bc87bff53808a45cd90ce1e
              }
          }
  
-@@ -1031,7 +1072,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
+@@ -1031,7 +1071,7 @@ public abstract class AbstractHorse extends Animal implements ContainerListener,
                  if (!predicate.test(stack)) {
                      return false;
                  } else {
@@ -476,31 +473,27 @@ index ff7c1726c323a104bac9a9a8b3a8ea6d6414dc75..40ae30fb0f2a77651a768854d8948a88
          });
 diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..131d5892892a7e144e6d605d9710ad2c2a16ae7c
+index 0000000000000000000000000000000000000000..180da2de42bc72d3e47492453539e426c9d45369
 --- /dev/null
 +++ b/src/main/java/puregero/multipaper/externalserverprotocol/EntityInventoryUpdatePacket.java
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,133 @@
 +package puregero.multipaper.externalserverprotocol;
 +
 +import com.mrivanplays.multipaper.EntityInventorySyncable;
-+import java.util.HashMap;
 +import java.util.HashSet;
 +import java.util.Map;
 +import java.util.Set;
 +import java.util.UUID;
++import java.util.concurrent.ConcurrentHashMap;
 +import net.minecraft.nbt.CompoundTag;
 +import net.minecraft.network.FriendlyByteBuf;
 +import net.minecraft.server.level.ServerLevel;
 +import net.minecraft.world.entity.Entity;
-+import net.minecraft.world.entity.animal.horse.AbstractChestedHorse;
-+import net.minecraft.world.entity.player.Player;
 +import net.minecraft.world.item.ItemStack;
 +import net.minecraft.world.level.chunk.LevelChunk;
 +import org.bukkit.Bukkit;
 +import org.bukkit.World;
 +import org.bukkit.craftbukkit.CraftWorld;
-+import org.bukkit.craftbukkit.entity.CraftHumanEntity;
-+import org.bukkit.entity.HumanEntity;
 +import puregero.multipaper.ExternalServer;
 +import puregero.multipaper.ExternalServerConnection;
 +import puregero.multipaper.MultiPaper;
@@ -516,19 +509,16 @@ index 0000000000000000000000000000000000000000..131d5892892a7e144e6d605d9710ad2c
 +        UUID entityId = entity.getUUID();
 +
 +        boolean empty;
-+        Map<Integer, CompoundTag> items;
++        Map<Integer, ItemStack> items;
 +        if (!syncable.isInventoryEmpty()) {
 +            empty = false;
-+            items = new HashMap<>();
++            items = new ConcurrentHashMap<>();
 +            for (int i : syncable.getSlots()) {
-+                CompoundTag nbt = new CompoundTag();
 +                ItemStack item = syncable.getItem(i);
 +                if (item == null || item.isEmpty()) {
 +                    continue;
 +                }
-+                nbt.putInt("MultiPaper.Slot", i);
-+                item.save(nbt);
-+                items.put(i, nbt);
++                items.put(i, item);
 +            }
 +        } else {
 +            items = null;
@@ -542,10 +532,10 @@ index 0000000000000000000000000000000000000000..131d5892892a7e144e6d605d9710ad2c
 +
 +    private final String world;
 +    private final UUID entityId;
-+    private Map<Integer, CompoundTag> items;
++    private Map<Integer, ItemStack> items;
 +    private final boolean empty;
 +
-+    private EntityInventoryUpdatePacket(String world, UUID entityId, Map<Integer, CompoundTag> items, boolean empty) {
++    private EntityInventoryUpdatePacket(String world, UUID entityId, Map<Integer, ItemStack> items, boolean empty) {
 +        this.world = world;
 +        this.entityId = entityId;
 +        this.items = items;
@@ -558,12 +548,12 @@ index 0000000000000000000000000000000000000000..131d5892892a7e144e6d605d9710ad2c
 +        this.empty = in.readBoolean();
 +        if (!this.empty) {
 +            int size = in.readInt();
-+            this.items = new HashMap<>(size);
++            this.items = new ConcurrentHashMap<>(size);
 +            for (int i = 0; i < size; i++) {
 +                CompoundTag nbt = in.readNbt();
 +                int slot = nbt.getInt("MultiPaper.Slot");
 +                nbt.remove("MultiPaper.Slot");
-+                this.items.put(slot, nbt);
++                this.items.put(slot, ItemStack.of(nbt));
 +            }
 +        }
 +    }
@@ -586,7 +576,10 @@ index 0000000000000000000000000000000000000000..131d5892892a7e144e6d605d9710ad2c
 +        out.writeBoolean(this.empty);
 +        if (!this.empty) {
 +            out.writeInt(this.items.size());
-+            for (CompoundTag nbt : this.items.values()) {
++            for (Map.Entry<Integer, ItemStack> entry : items.entrySet()) {
++                CompoundTag nbt = new CompoundTag();
++                nbt.putInt("MultiPaper.Slot", entry.getKey());
++                entry.getValue().save(nbt);
 +                out.writeNbt(nbt);
 +            }
 +        }
@@ -608,32 +601,12 @@ index 0000000000000000000000000000000000000000..131d5892892a7e144e6d605d9710ad2c
 +            return;
 +        }
 +
-+        Map<Integer, ItemStack> tempItems = new HashMap<>();
 +        for (int i : syncable.getSlots()) {
-+            CompoundTag itemTag = this.items.get(i);
-+            if (itemTag == null && syncable.getItem(i) != ItemStack.EMPTY) {
-+                syncable.setItemNoSync(i, ItemStack.EMPTY);
-+                tempItems.put(i, ItemStack.EMPTY);
-+                continue;
++            ItemStack item = this.items.get(i);
++            if (item == null) {
++                item = ItemStack.EMPTY;
 +            }
-+            if (itemTag == null) {
-+                continue;
-+            }
-+            ItemStack item = ItemStack.of(itemTag);
-+            tempItems.put(i, item);
 +            syncable.setItemNoSync(i, item);
-+        }
-+        if (entity instanceof AbstractChestedHorse && !syncable.getViewers().isEmpty()) {
-+            try {
-+                for (Map.Entry<Integer, ItemStack> entry : tempItems.entrySet()) {
-+                    for (HumanEntity viewer : syncable.getViewers()) {
-+                        Player player = ((CraftHumanEntity) viewer).getHandle();
-+                        player.containerMenu.getSlot(entry.getKey()).set(entry.getValue());
-+                    }
-+                }
-+            } finally {
-+                tempItems.clear();
-+            }
 +        }
 +    }
 +}
