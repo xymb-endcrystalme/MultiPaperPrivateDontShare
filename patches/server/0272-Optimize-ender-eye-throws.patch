@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 28 Jan 2023 09:43:41 +0100
+Subject: [PATCH] Optimize ender eye throws.
+
+
+diff --git a/src/main/java/net/minecraft/world/level/chunk/ChunkGenerator.java b/src/main/java/net/minecraft/world/level/chunk/ChunkGenerator.java
+index 8b378c9fada61995d65d250aaf2afb283a871de0..7cbdb01a3071dad198c66e5bdee79edb83accfcb 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/ChunkGenerator.java
++++ b/src/main/java/net/minecraft/world/level/chunk/ChunkGenerator.java
+@@ -85,6 +85,7 @@ import net.minecraft.world.level.levelgen.structure.placement.StructurePlacement
+ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
+ import org.apache.commons.lang3.mutable.MutableBoolean;
+ import org.slf4j.Logger;
++import puregero.multipaper.config.MultiPaperConfiguration;
+ 
+ public abstract class ChunkGenerator {
+ 
+@@ -408,6 +409,31 @@ public abstract class ChunkGenerator {
+     private Pair<BlockPos, Holder<Structure>> getNearestGeneratedStructure(Set<Holder<Structure>> structures, ServerLevel world, StructureManager structureAccessor, BlockPos center, boolean skipReferencedStructures, ConcentricRingsStructurePlacement placement) {
+         List<ChunkPos> list = this.getRingPositionsFor(placement, world.getChunkSource().randomState());
+ 
++        // Xymb start
++        if (puregero.multipaper.config.MultiPaperConfiguration.get().optimizations.enderEyeStrongholdFindOptimization && structures.size() == 1) {
++            Holder.Reference<Structure> ref = (Holder.Reference<Structure>)structures.toArray()[0];
++            String className = ref.value().toString(); // Xymb: Yeah, IDGAF how ugly it is, I just want it to work
++            if (className.contains("StrongholdStructure")) {
++                ChunkPos best = null;
++                double distance = Double.MAX_VALUE;
++                for (ChunkPos pos: list) {
++                    double xDist = center.getX() - pos.getMiddleBlockX();
++                    double zDist = center.getZ() - pos.getMiddleBlockZ();
++                    double posDist = xDist * xDist + zDist * zDist;
++                    if (distance > posDist) {
++                        distance = posDist;
++                        best = pos;
++                    }
++                }
++                if (best != null) {
++                    list = new ArrayList<ChunkPos>(1);
++                    list.add(best);
++                    System.out.println("Optimizing ender eye throw " + best + " " + Math.sqrt(distance));
++                }
++            }
++        }
++        // Xymb end
++
+         if (list == null) {
+             throw new IllegalStateException("Somehow tried to find structures for a placement that doesn't exist");
+         } else {
+@@ -488,7 +514,6 @@ public abstract class ChunkGenerator {
+                     if (!skipReferencedStructures && structurecheckresult == StructureCheckResult.START_PRESENT) {
+                         return Pair.of(placement.getLocatePos(pos), holder);
+                     }
+-
+                     ChunkAccess ichunkaccess = world.getChunk(pos.x, pos.z, ChunkStatus.STRUCTURE_STARTS);
+ 
+                     structurestart = structureAccessor.getStartForStructure(SectionPos.bottomOf(ichunkaccess), (Structure) holder.value(), ichunkaccess);
+diff --git a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+index f029c43aa8af3ddf1ecb215eb2c04d12577f5972..f66bc451bfa94a7ef95eb600c05d2ba5a7f7002f 100644
+--- a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
++++ b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+@@ -67,6 +67,7 @@ public class MultiPaperConfiguration extends ConfigurationPart {
+         public boolean dontGenerateStrongholds = false;
+         public boolean disableDefaultPlayerSpawnAlgorithm = false;
+         public boolean disableDolphinSwimToTreasure = false;
++        public boolean enderEyeStrongholdFindOptimization = false;
+     }
+ 
+     public SyncSettings syncSettings;
