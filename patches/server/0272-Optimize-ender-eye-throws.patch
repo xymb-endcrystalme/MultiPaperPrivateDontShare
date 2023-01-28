@@ -5,7 +5,7 @@ Subject: [PATCH] Optimize ender eye throws.
 
 
 diff --git a/src/main/java/net/minecraft/world/level/chunk/ChunkGenerator.java b/src/main/java/net/minecraft/world/level/chunk/ChunkGenerator.java
-index 8b378c9fada61995d65d250aaf2afb283a871de0..7cbdb01a3071dad198c66e5bdee79edb83accfcb 100644
+index 8b378c9fada61995d65d250aaf2afb283a871de0..cfae5e2e118447c1c5cb0e307ec8586ca4f69259 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/ChunkGenerator.java
 +++ b/src/main/java/net/minecraft/world/level/chunk/ChunkGenerator.java
 @@ -85,6 +85,7 @@ import net.minecraft.world.level.levelgen.structure.placement.StructurePlacement
@@ -48,14 +48,6 @@ index 8b378c9fada61995d65d250aaf2afb283a871de0..7cbdb01a3071dad198c66e5bdee79edb
          if (list == null) {
              throw new IllegalStateException("Somehow tried to find structures for a placement that doesn't exist");
          } else {
-@@ -488,7 +514,6 @@ public abstract class ChunkGenerator {
-                     if (!skipReferencedStructures && structurecheckresult == StructureCheckResult.START_PRESENT) {
-                         return Pair.of(placement.getLocatePos(pos), holder);
-                     }
--
-                     ChunkAccess ichunkaccess = world.getChunk(pos.x, pos.z, ChunkStatus.STRUCTURE_STARTS);
- 
-                     structurestart = structureAccessor.getStartForStructure(SectionPos.bottomOf(ichunkaccess), (Structure) holder.value(), ichunkaccess);
 diff --git a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
 index f029c43aa8af3ddf1ecb215eb2c04d12577f5972..f66bc451bfa94a7ef95eb600c05d2ba5a7f7002f 100644
 --- a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
