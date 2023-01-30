@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 30 Jan 2023 07:35:31 +0100
+Subject: [PATCH] Disable suffocation.
+
+
+diff --git a/src/main/java/net/minecraft/world/entity/LivingEntity.java b/src/main/java/net/minecraft/world/entity/LivingEntity.java
+index 5bee17e7fc120496fb46e23d26d14af91ccf04a3..5ae4728a1fd60800bb5890852057e13379657c67 100644
+--- a/src/main/java/net/minecraft/world/entity/LivingEntity.java
++++ b/src/main/java/net/minecraft/world/entity/LivingEntity.java
+@@ -405,7 +405,8 @@ public abstract class LivingEntity extends Entity {
+         if (this.isAlive()) {
+             boolean flag = this instanceof net.minecraft.world.entity.player.Player;
+             if (tickCount % 20 == 0 && couldPossiblyBeHurt(1.0F) && this.isInWall()) { // Pufferfish - optimize suffocation
+-                this.hurt(DamageSource.IN_WALL, 1.0F);
++                if (this instanceof ServerPlayer && !MultiPaperConfiguration.get().optimizations.disablePlayerBlockSuffocation) // MultiPaper
++                    this.hurt(DamageSource.IN_WALL, 1.0F);
+             } else if (flag && !this.level.getWorldBorder().isWithinBounds(this.getBoundingBox())) {
+                 double d0 = this.level.getWorldBorder().getDistanceToBorder(this) + this.level.getWorldBorder().getDamageSafeZone();
+ 
+diff --git a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+index f66bc451bfa94a7ef95eb600c05d2ba5a7f7002f..c007f71fc5b7f36eb6c62b1f265e5cc1169c3ae4 100644
+--- a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
++++ b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+@@ -68,6 +68,7 @@ public class MultiPaperConfiguration extends ConfigurationPart {
+         public boolean disableDefaultPlayerSpawnAlgorithm = false;
+         public boolean disableDolphinSwimToTreasure = false;
+         public boolean enderEyeStrongholdFindOptimization = false;
++        public boolean disablePlayerBlockSuffocation = false;
+     }
+ 
+     public SyncSettings syncSettings;
