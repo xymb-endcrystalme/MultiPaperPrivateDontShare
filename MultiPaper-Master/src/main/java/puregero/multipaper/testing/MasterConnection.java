@@ -182,4 +182,9 @@ public class MasterConnection extends ServerBoundMessageHandler {
     public void handle(EntitySubscribersSyncMessage message) {
         System.out.println("STUB: " + message.getClass().toString());
     }
+
+    @Override
+    public void handle(ExecuteCommandMessage message) {
+        System.out.println("STUB: " + message.getClass().toString());
+    }
 }

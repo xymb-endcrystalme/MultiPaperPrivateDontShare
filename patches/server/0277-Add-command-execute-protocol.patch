@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: AlexProgrammerDE <40795980+AlexProgrammerDE@users.noreply.github.com>
+Date: Mon, 30 Jan 2023 17:09:55 +0100
+Subject: [PATCH] Add command execute protocol
+
+
+diff --git a/src/main/java/puregero/multipaper/MultiPaperConnection.java b/src/main/java/puregero/multipaper/MultiPaperConnection.java
+index 3ff3a1c38857da87740e9aa1de845a1dc300816f..5b1d49ec7e101848d927646806226e352c34876d 100644
+--- a/src/main/java/puregero/multipaper/MultiPaperConnection.java
++++ b/src/main/java/puregero/multipaper/MultiPaperConnection.java
+@@ -444,6 +444,11 @@ public class MultiPaperConnection extends ServerBoundMessageHandler {
+         });
+     }
+ 
++    @Override
++    public void handle(ExecuteCommandMessage message) {
++        MultiPaper.runSync(() -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), message.command));
++    }
++
+     @Override
+     public void handle(ShutdownMessage message) {
+         MultiPaper.shutdownServer = true;

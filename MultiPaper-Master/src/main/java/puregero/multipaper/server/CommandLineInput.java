@@ -1,5 +1,6 @@
 package puregero.multipaper.server;
 
+import puregero.multipaper.mastermessagingprotocol.messages.serverbound.ExecuteCommandMessage;
 import puregero.multipaper.server.util.MultithreadedRegionManager;
 import java.util.Scanner;
 
@@ -17,8 +18,14 @@ public class CommandLineInput extends Thread {
                 ServerConnection.shutdownAndWait();
                 MultithreadedRegionManager.saveEverything();
                 System.exit(0);
+            } if (line.startsWith("execute ")) {
+                String command = line.substring("execute ".length());
+                System.out.println("Executing command '" + command + "' on all servers...");
+                ServerConnection.broadcastAll(new ExecuteCommandMessage(command));
             } else {
-                System.out.println("Unknown command, use 'shutdown' to shutdown all servers or ctrl+c to stop just this master server");
+                    System.out.println("Unknown command, options:");
+                    System.out.println("Use 'execute <command>' to execute a console command on all servers");
+                    System.out.println("Use 'shutdown' to shutdown all servers or ctrl+c to stop just this master server");
             }
         }
     }

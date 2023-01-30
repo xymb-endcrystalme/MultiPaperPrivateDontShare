@@ -38,4 +38,6 @@ public abstract class ServerBoundMessageHandler extends MessageHandler<ServerBou
     public abstract void handle(ChunkSubscribersSyncMessage message);
 
     public abstract void handle(EntitySubscribersSyncMessage message);
+
+    public abstract void handle(ExecuteCommandMessage message);
 }
