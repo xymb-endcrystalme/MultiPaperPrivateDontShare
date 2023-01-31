@@ -50,7 +50,7 @@ public class MultiPaperServer extends MessageBootstrap<MasterBoundMessage, Serve
 
         new MultiPaperServer(address, port);
 
-        new StatsWebServer(35994);
+        if (Boolean.getBoolean("multipaper.statsServer")) new StatsWebServer(35994);
 
         new CommandLineInput().run();
     }
