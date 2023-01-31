@@ -2,6 +2,7 @@ package puregero.multipaper.server.util;
 
 import java.io.*;
 import java.lang.ref.*;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
@@ -124,6 +125,10 @@ public class MultithreadedRegionManager extends Thread {
         File regionFileFile = new File(fullPath);
         if (regionFileFile.canRead())
             regionFile = new LinearRegionFile(fullPath);
+        else if (Files.isSymbolicLink(regionFileFile.toPath())) {
+            System.out.println("ERROR: Symlink broken " + regionFileFile.toPath());
+            System.exit(-1);
+        }
         if (regionFile != null) synchronized (cache) {cache.put(fullPath, regionFile);}
         return regionFile;
     }
