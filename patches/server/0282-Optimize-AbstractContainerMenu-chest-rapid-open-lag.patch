@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Thu, 2 Feb 2023 16:07:49 +0100
+Subject: [PATCH] Optimize AbstractContainerMenu chest rapid open lag.
+
+
+diff --git a/src/main/java/net/minecraft/world/inventory/AbstractContainerMenu.java b/src/main/java/net/minecraft/world/inventory/AbstractContainerMenu.java
+index 4f266a86f820511b0fd9670f1680101cd4fcf243..3d19ee74629612a095d511fce7e6578c2be2b4f5 100644
+--- a/src/main/java/net/minecraft/world/inventory/AbstractContainerMenu.java
++++ b/src/main/java/net/minecraft/world/inventory/AbstractContainerMenu.java
+@@ -187,10 +187,10 @@ public abstract class AbstractContainerMenu {
+         int j;
+ 
+         for (j = this.slots.size(); i < j; ++i) {
+-            this.remoteSlots.set(i, ((Slot) this.slots.get(i)).getItem().copy());
++            this.remoteSlots.set(i, ((Slot) this.slots.get(i)).getItem().rapidCloneItemStackAndReduplicate(false));
+         }
+ 
+-        this.remoteCarried = this.getCarried().copy();
++        this.remoteCarried = this.getCarried().rapidCloneItemStackAndReduplicate(false);
+         i = 0;
+ 
+         for (j = this.dataSlots.size(); i < j; ++i) {
+diff --git a/src/main/java/net/minecraft/world/item/ItemStack.java b/src/main/java/net/minecraft/world/item/ItemStack.java
+index 0dcecdbe73a5c6ea80d7eed74d638a1ecd3db636..e519e838648b4a49e269c48f759a57428e261e1e 100644
+--- a/src/main/java/net/minecraft/world/item/ItemStack.java
++++ b/src/main/java/net/minecraft/world/item/ItemStack.java
+@@ -758,6 +758,20 @@ public final class ItemStack {
+         }
+     }
+ 
++    public ItemStack rapidCloneItemStackAndReduplicate(boolean origItem) {
++        if (!origItem && this.isEmpty()) {
++            return ItemStack.EMPTY;
++        } else {
++            ItemStack itemstack = new ItemStack(origItem ? this.item : this.getItem(), this.count);
++
++            itemstack.setPopTime(this.getPopTime());
++            itemstack.tag = this.tag;
++            itemstack.reduplicate();
++
++            return itemstack;
++        }
++    }
++
+     public void reduplicate() {
+         if (this.tag != null)
+             this.tag = xymb.NBTDeduplicator.instance().reduplicateTagNoCopy(this.tag);
