@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Thu, 2 Feb 2023 05:31:27 +0100
+Subject: [PATCH] Reoptimize ItemStacks.
+
+
+diff --git a/src/main/java/net/minecraft/network/protocol/game/ClientboundContainerSetContentPacket.java b/src/main/java/net/minecraft/network/protocol/game/ClientboundContainerSetContentPacket.java
+index dbd8b9b09b82c1b75e8be9dc7416d9f0863c8c87..68d5f5eec7fcd7741ff745ca175e915a7c0025a3 100644
+--- a/src/main/java/net/minecraft/network/protocol/game/ClientboundContainerSetContentPacket.java
++++ b/src/main/java/net/minecraft/network/protocol/game/ClientboundContainerSetContentPacket.java
+@@ -18,10 +18,10 @@ public class ClientboundContainerSetContentPacket implements Packet<ClientGamePa
+         this.items = NonNullList.withSize(contents.size(), ItemStack.EMPTY);
+ 
+         for(int i = 0; i < contents.size(); ++i) {
+-            this.items.set(i, contents.get(i).copy());
++            this.items.set(i, contents.get(i).rapidCloneItemStack(false));
+         }
+ 
+-        this.carriedItem = cursorStack.copy();
++        this.carriedItem = cursorStack.rapidCloneItemStack(false);
+     }
+ 
+     public ClientboundContainerSetContentPacket(FriendlyByteBuf buf) {
+diff --git a/src/main/java/net/minecraft/world/item/ItemStack.java b/src/main/java/net/minecraft/world/item/ItemStack.java
+index ef3c6bde5a6607e58bd7622015628d944e886bad..0dcecdbe73a5c6ea80d7eed74d638a1ecd3db636 100644
+--- a/src/main/java/net/minecraft/world/item/ItemStack.java
++++ b/src/main/java/net/minecraft/world/item/ItemStack.java
+@@ -746,8 +746,6 @@ public final class ItemStack {
+ 
+     // MultiPaper start
+     public ItemStack rapidCloneItemStack(boolean origItem) {
+-        return cloneItemStack(origItem);
+-        /*
+         if (!origItem && this.isEmpty()) {
+             return ItemStack.EMPTY;
+         } else {
+@@ -757,7 +755,7 @@ public final class ItemStack {
+             itemstack.tag = this.tag;
+ 
+             return itemstack;
+-        }*/
++        }
+     }
+ 
+     public void reduplicate() {
