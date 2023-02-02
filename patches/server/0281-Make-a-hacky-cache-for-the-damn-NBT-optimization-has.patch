@@ -18,10 +18,10 @@ index c007f71fc5b7f36eb6c62b1f265e5cc1169c3ae4..ad1160713a19fa7dc6d9506b7d6cc9da
  
      public SyncSettings syncSettings;
 diff --git a/src/main/java/xymb/NBTDeduplicator.java b/src/main/java/xymb/NBTDeduplicator.java
-index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087840ca12e 100644
+index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..b642c9a8c6da153b39218f6b17402a95ca998b59 100644
 --- a/src/main/java/xymb/NBTDeduplicator.java
 +++ b/src/main/java/xymb/NBTDeduplicator.java
-@@ -8,20 +8,87 @@ import net.minecraft.nbt.Tag;
+@@ -8,20 +8,91 @@ import net.minecraft.nbt.Tag;
  import net.minecraft.nbt.StringTag;
  import java.io.ByteArrayOutputStream;
  import java.io.DataOutputStream;
@@ -30,6 +30,7 @@ index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087
 +import java.io.File;
 +import net.minecraft.nbt.NbtIo;
  import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
++import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
  import net.openhft.hashing.LongTupleHashFunction;
  import puregero.multipaper.ChunkKey;
 +import puregero.multipaper.config.MultiPaperConfiguration;
@@ -44,6 +45,7 @@ index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087
  
  public class NBTDeduplicator {
      Object2ObjectOpenHashMap<Hash128, ListTag> tags = new Object2ObjectOpenHashMap<>();
++    private static ObjectLinkedOpenHashSet<Hash128> savedTags = new ObjectLinkedOpenHashSet<>();
  
      private static NBTDeduplicator instance = null;
 +    private static ConcurrentLinkedQueue<Hash128> cacheIncomingHash = new ConcurrentLinkedQueue<>();
@@ -71,6 +73,8 @@ index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087
 +
 +                        Hash128 hash = cacheIncomingHash.poll();
 +                        ListTag tag = cacheIncomingListTag.poll();
++                        if (savedTags.contains(hash)) continue;
++                        savedTags.add(hash);
 +                        String hashString = hash.hashString();
 +                        String fileName = hashString + ".nbt";
 +                        String testFileName = hashString + ".nbt.wip";
@@ -110,7 +114,7 @@ index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087
      public static class Hash128 {
          public long lower, upper;
  
-@@ -54,6 +121,19 @@ public class NBTDeduplicator {
+@@ -54,6 +125,24 @@ public class NBTDeduplicator {
          }
      }
  
@@ -120,8 +124,13 @@ index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087
 +                ListTag copy = tag.copy();
 +                tags.put(hash, copy);
 +                if (!MultiPaperConfiguration.get().optimizations.backwardsIncompatibleStashOptimizationHashCacheFolder.isEmpty()) {
-+                    cacheIncomingHash.add(hash);
-+                    cacheIncomingListTag.add(copy);
++                    if (hash == null) {
++                        System.out.println("ERROR! Unknown deduplication hash is NULL");
++                        Thread.dumpStack();
++                    } else {
++                        cacheIncomingHash.add(hash);
++                        cacheIncomingListTag.add(copy);
++                    }
 +                }
 +            }
 +        }
@@ -130,15 +139,15 @@ index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087
      public void addHash(String hash, ListTag tag) {
          long lower = Long.parseLong(hash.substring(0, 16), 16);
          long upper = Long.parseLong(hash.substring(16, 32), 16);
-@@ -62,10 +142,53 @@ public class NBTDeduplicator {
+@@ -62,10 +151,53 @@ public class NBTDeduplicator {
  //            if (!tags.containsKey(new Hash128(lower, upper))) {
  //                System.out.println("Adding hash " + hash);
  //            }
 -            tags.put(new Hash128(lower, upper), tag);
 +            addHash(new Hash128(lower, upper), tag);
-+        }
-+    }
-+
+         }
+     }
+ 
 +    ListTag getHash(Hash128 hash) {
 +        synchronized (tags) {
 +            ListTag deduplicated = tags.get(hash);
@@ -165,15 +174,15 @@ index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087
 +                System.out.println("ERROR: Can't read hash IOException!");
 +            }
 +            return null;
-         }
-     }
- 
++        }
++    }
++
 +    public String addAndGetHex(ListTag tag) {
 +        Hash128 hash = hashNBT(tag);
 +        ListTag deduplicated;
 +
 +        synchronized (tags) {
-+            deduplicated = getHash(hash);
++            deduplicated = tags.get(hash);
 +            if (deduplicated == null) {
 +                addHash(hash, tag);
 +            }
@@ -185,16 +194,7 @@ index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087
      public Hash128 hashNBT(ListTag tag) {
          ByteArrayOutputStream baos = new ByteArrayOutputStream();
          try {
-@@ -101,7 +224,7 @@ public class NBTDeduplicator {
-         Hash128 hash128 = hashFromLU(lower, upper);
-         ListTag deduplicated;
-         synchronized (tags) {
--            deduplicated = tags.get(hash128);
-+            deduplicated = getHash(hash128);
-         }
-         return deduplicated != null;
-     }
-@@ -114,26 +237,12 @@ public class NBTDeduplicator {
+@@ -114,26 +246,12 @@ public class NBTDeduplicator {
          Hash128 hash = hashFromLU(lower, upper);
          ListTag deduplicated;
          synchronized (tags) {
@@ -222,7 +222,7 @@ index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087
      public ListTag makePalette() {
          var list = new ListTag();
          int i = 0;
-@@ -173,6 +282,8 @@ public class NBTDeduplicator {
+@@ -173,6 +291,8 @@ public class NBTDeduplicator {
      }
  
      public static void deduplicateContainersOnChunkRead(CompoundTag nbt, ChunkKey key) {
@@ -231,7 +231,7 @@ index 8a50fd2c3360e090d0f470a51aa0748a7f62e686..d2f8260ec70f7caa4f86fe9c611d1087
          int regionVersion = nbt.getInt("DataVersion");
          if (regionVersion < 3120) return; // 1.19.2
  
-@@ -230,6 +341,7 @@ public class NBTDeduplicator {
+@@ -230,6 +350,7 @@ public class NBTDeduplicator {
      }
  
      public static void deduplicateContainersOnWrite(CompoundTag nbt) {
