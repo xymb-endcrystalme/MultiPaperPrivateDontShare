@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Tue, 7 Feb 2023 15:08:01 +0100
+Subject: [PATCH] Report how long each plugin took to start.
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index 53315a5f6a7f0ceba1441cd27f7527034daec605..d3f470b2c7f18324b1e56b5a0f0a9b23c4d564bb 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -513,7 +513,9 @@ public final class CraftServer implements Server {
+ 
+         for (Plugin plugin : plugins) {
+             if ((!plugin.isEnabled()) && (plugin.getDescription().getLoad() == type)) {
++                long start = System.nanoTime();
+                 this.enablePlugin(plugin);
++                System.out.println("Plugin " + plugin.getDescription().getFullName() + " took " + ((System.nanoTime() - start)/1000000.) + "ms to load.");
+             }
+         }
+ 
