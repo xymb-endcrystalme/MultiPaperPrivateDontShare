@@ -61,19 +61,23 @@ paperweight {
     remapRepo.set("https://maven.fabricmc.net/")
     decompileRepo.set("https://files.minecraftforge.net/maven/")
 
-    usePaperUpstream(providers.gradleProperty("paperRef")) {
-        withPaperPatcher {
+    useStandardUpstream("MultiPaper") {
+        url.set(github("MultiPaper", "MultiPaper"))
+        ref.set(providers.gradleProperty("multipaperRef"))
+        withStandardPatcher() {
+            apiSourceDirPath.set("MultiPaper-API")
             apiPatchDir.set(layout.projectDirectory.dir("patches/api"))
             apiOutputDir.set(layout.projectDirectory.dir("MultiPaper-API"))
 
+            serverSourceDirPath.set("MultiPaper-Server")
             serverPatchDir.set(layout.projectDirectory.dir("patches/server"))
             serverOutputDir.set(layout.projectDirectory.dir("MultiPaper-Server"))
         }
     }
     
-    tasks.register("paperRefLatest") {
+    tasks.register("multipaperRefLatest") {
         // Update the paperRef in gradle.properties to be the latest commit
-        val tempDir = layout.cacheDir("paperRefLatest");
+        val tempDir = layout.cacheDir("multipaperRefLatest");
         val file = "gradle.properties";
         
         doFirst {
@@ -82,14 +86,14 @@ paperweight {
             )
 
             val paperLatestCommitJson = layout.cache.resolve("paperLatestCommit.json");
-            download.get().download("https://api.github.com/repos/PaperMC/Paper/commits/master", paperLatestCommitJson);
+            download.get().download("https://api.github.com/repos/MultiPaper/MultiPaper/commits/main", paperLatestCommitJson);
             val paperLatestCommit = gson.fromJson<paper.libs.com.google.gson.JsonObject>(paperLatestCommitJson)["sha"].asString;
 
             copy {
                 from(file)
                 into(tempDir)
                 filter { line: String ->
-                    line.replace("paperRef = .*".toRegex(), "paperRef = $paperLatestCommit")
+                    line.replace("multipaperRef = .*".toRegex(), "multipaperRef = $paperLatestCommit")
                 }
             }
         }
