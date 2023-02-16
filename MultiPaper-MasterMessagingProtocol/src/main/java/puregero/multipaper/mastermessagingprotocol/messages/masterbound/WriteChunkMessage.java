@@ -12,15 +12,21 @@ public class WriteChunkMessage extends MasterBoundMessage {
     public final int cx;
     public final int cz;
     public final byte[] data;
+    public final boolean isTransientEntities;
     public final byte compressionType;
     public final int uncompressedSize;
 
     public WriteChunkMessage(String world, String path, int cx, int cz, byte[] data, byte compressionType, int uncompressedSize) {
+        this(world, path, cx, cz, data, false, compressionType, uncompressedSize);
+    }
+
+    public WriteChunkMessage(String world, String path, int cx, int cz, byte[] data, boolean isTransientEntities, byte compressionType, int uncompressedSize) {
         this.world = world;
         this.path = path;
         this.cx = cx;
         this.cz = cz;
         this.data = data;
+        this.isTransientEntities = isTransientEntities;
         this.compressionType = compressionType;
         this.uncompressedSize = uncompressedSize;
     }
@@ -32,6 +38,7 @@ public class WriteChunkMessage extends MasterBoundMessage {
         cz = byteBuf.readInt();
         data = new byte[byteBuf.readVarInt()];
         byteBuf.readBytes(data);
+        isTransientEntities = byteBuf.readBoolean();
         compressionType = byteBuf.readByte();
         uncompressedSize = byteBuf.readInt();
     }
@@ -44,8 +51,10 @@ public class WriteChunkMessage extends MasterBoundMessage {
         byteBuf.writeInt(cz);
         byteBuf.writeVarInt(data.length);
         byteBuf.writeBytes(data);
+        byteBuf.writeBoolean(isTransientEntities);
         byteBuf.writeByte(compressionType);
         byteBuf.writeInt(uncompressedSize);
+
     }
 
     @Override

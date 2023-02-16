@@ -1,4 +1,4 @@
-version = "2.10.1"
+version = "2.11.0"
 
 plugins {
     `java`
@@ -24,7 +24,8 @@ dependencies {
     implementation("com.github.luben:zstd-jni:1.4.4-2")
     implementation("org.lz4:lz4-java:1.8.0")
     implementation("com.google.code.gson:gson:2.10")
-
+    implementation("se.llbit:jo-nbt:1.3.0")
+    
     compileOnly("net.md-5:bungeecord-api:1.16-R0.4")
 
     compileOnly("com.velocitypowered:velocity-api:3.0.1")
@@ -42,6 +43,7 @@ tasks.jar {
 tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {
     relocate("io.netty", "puregero.multipaper.master.libs.netty")
     relocate("org.yaml.snakeyaml", "puregero.multipaper.master.libs.snakeyaml")
+    relocate("se.llbit.nbt", "puregero.multipaper.master.libs.nbt")
 }
 
 publishing {

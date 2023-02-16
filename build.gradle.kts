@@ -4,7 +4,7 @@ import io.papermc.paperweight.util.constants.*
 plugins {
     java
     id("com.github.johnrengelman.shadow") version "7.1.2"
-    id("io.papermc.paperweight.patcher") version "1.3.8"
+    id("io.papermc.paperweight.patcher") version "1.4.1"
 }
 
 repositories {
@@ -15,8 +15,8 @@ repositories {
 }
 
 dependencies {
-    remapper("net.fabricmc:tiny-remapper:0.8.2:fat")
-    decompiler("net.minecraftforge:forgeflower:1.5.605.7")
+    remapper("net.fabricmc:tiny-remapper:0.8.6:fat")
+    decompiler("net.minecraftforge:forgeflower:2.0.605.1")
     paperclip("io.papermc:paperclip:3.0.2")
 }
 
@@ -86,7 +86,7 @@ paperweight {
             )
 
             val paperLatestCommitJson = layout.cache.resolve("paperLatestCommit.json");
-            download.get().download("https://api.github.com/repos/MultiPaper/MultiPaper/commits/main", paperLatestCommitJson);
+            download.get().download("https://api.github.com/repos/MultiPaper/MultiPaper/commits/dev/1.19.3", paperLatestCommitJson);
             val paperLatestCommit = gson.fromJson<paper.libs.com.google.gson.JsonObject>(paperLatestCommitJson)["sha"].asString;
 
             copy {
