@@ -6,10 +6,10 @@ Subject: [PATCH] Add XymbKill command.
 Signed-off-by: Xymb <xymb@endcrystal.me>
 
 diff --git a/src/main/java/net/minecraft/commands/Commands.java b/src/main/java/net/minecraft/commands/Commands.java
-index 1a6f3c602437eaedbc96f1d47d08ff3ab25c0469..6bb6e5ba026d904fa65013620969ba53ecf52522 100644
+index 7c96f7fc5997761426a0c62cad0cab5cc668f282..a726cb05e79488294304b30e3360475555dd935a 100644
 --- a/src/main/java/net/minecraft/commands/Commands.java
 +++ b/src/main/java/net/minecraft/commands/Commands.java
-@@ -107,6 +107,7 @@ import net.minecraft.server.commands.TellRawCommand;
+@@ -101,6 +101,7 @@ import net.minecraft.server.commands.TellRawCommand;
  import net.minecraft.server.commands.TimeCommand;
  import net.minecraft.server.commands.TitleCommand;
  import net.minecraft.server.commands.TriggerCommand;
@@ -17,7 +17,7 @@ index 1a6f3c602437eaedbc96f1d47d08ff3ab25c0469..6bb6e5ba026d904fa65013620969ba53
  import net.minecraft.server.commands.WeatherCommand;
  import net.minecraft.server.commands.WhitelistCommand;
  import net.minecraft.server.commands.WorldBorderCommand;
-@@ -190,6 +191,7 @@ public class Commands {
+@@ -182,6 +183,7 @@ public class Commands {
          TimeCommand.register(this.dispatcher);
          TitleCommand.register(this.dispatcher);
          TriggerCommand.register(this.dispatcher);
