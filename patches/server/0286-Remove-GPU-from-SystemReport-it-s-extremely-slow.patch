@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 25 Feb 2023 15:34:39 +0100
+Subject: [PATCH] Remove GPU from SystemReport - it's extremely slow.
+
+
+diff --git a/src/main/java/net/minecraft/SystemReport.java b/src/main/java/net/minecraft/SystemReport.java
+index b9019ba135ee72c336a846f40728f874d7f3bfa4..19bac4c4f33ff9c0fe27834a946ae75a88cd8b5c 100644
+--- a/src/main/java/net/minecraft/SystemReport.java
++++ b/src/main/java/net/minecraft/SystemReport.java
+@@ -72,9 +72,6 @@ public class SystemReport {
+         this.ignoreErrors("processor", () -> {
+             this.putProcessor(hardwareAbstractionLayer.getProcessor());
+         });
+-        this.ignoreErrors("graphics", () -> {
+-            this.putGraphics(hardwareAbstractionLayer.getGraphicsCards());
+-        });
+         this.ignoreErrors("memory", () -> {
+             this.putMemory(hardwareAbstractionLayer.getMemory());
+         });
