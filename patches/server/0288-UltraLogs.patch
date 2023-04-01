@@ -1,0 +1,495 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sat, 4 Mar 2023 14:25:39 +0100
+Subject: [PATCH] UltraLogs
+
+
+diff --git a/src/main/java/net/minecraft/commands/Commands.java b/src/main/java/net/minecraft/commands/Commands.java
+index f4779deb7e2e9248b87128a7f01e288d78dec029..fbc0347c939c896d4ba9d23b8d86c6a8b8be1ff4 100644
+--- a/src/main/java/net/minecraft/commands/Commands.java
++++ b/src/main/java/net/minecraft/commands/Commands.java
+@@ -103,6 +103,7 @@ import net.minecraft.server.commands.TitleCommand;
+ import net.minecraft.server.commands.TriggerCommand;
+ import net.minecraft.server.commands.XymbKillCommand;
+ import net.minecraft.server.commands.XymbRapidlogCommand;
++import net.minecraft.server.commands.XymbUltralogCommand;
+ import net.minecraft.server.commands.WeatherCommand;
+ import net.minecraft.server.commands.WhitelistCommand;
+ import net.minecraft.server.commands.WorldBorderCommand;
+@@ -186,6 +187,7 @@ public class Commands {
+         TriggerCommand.register(this.dispatcher);
+         XymbKillCommand.register(this.dispatcher);
+         XymbRapidlogCommand.register(this.dispatcher);
++        XymbUltralogCommand.register(this.dispatcher);
+         WeatherCommand.register(this.dispatcher);
+         WorldBorderCommand.register(this.dispatcher);
+         if (JvmProfiler.INSTANCE.isAvailable()) {
+diff --git a/src/main/java/net/minecraft/server/commands/XymbUltralogCommand.java b/src/main/java/net/minecraft/server/commands/XymbUltralogCommand.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..1cd011741b51bf18fb6d8b6cf8ebee1d83b01b6a
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/commands/XymbUltralogCommand.java
+@@ -0,0 +1,28 @@
++package net.minecraft.server.commands;
++
++import com.google.common.collect.ImmutableList;
++import com.mojang.brigadier.CommandDispatcher;
++import java.util.Collection;
++import net.minecraft.commands.CommandSourceStack;
++import net.minecraft.commands.Commands;
++import net.minecraft.commands.arguments.EntityArgument;
++import net.minecraft.network.chat.Component;
++import net.minecraft.world.entity.Entity;
++import puregero.multipaper.config.MultiPaperConfiguration;
++
++public class XymbUltralogCommand {
++    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
++        dispatcher.register(Commands.literal("xymbultralog").requires((source) -> {
++            return source.hasPermission(2);
++        }).executes((context) -> {
++            if (MultiPaperConfiguration.get().optimizations.createUltraLogs) {
++                MultiPaperConfiguration.get().optimizations.createUltraLogs = false;
++                context.getSource().sendSuccess(Component.literal("Ultralog disabled"), true);
++            } else {
++                MultiPaperConfiguration.get().optimizations.createUltraLogs = true;
++                context.getSource().sendSuccess(Component.literal("Ultralog enabled"), true);
++            }
++            return 0;
++        }));
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/level/ServerPlayer.java b/src/main/java/net/minecraft/server/level/ServerPlayer.java
+index 62a0fc98d60d7403a8d8bc57f7871fc52fb41af0..7653ab0e44264941fdb9b0133ce48c73f65eb45e 100644
+--- a/src/main/java/net/minecraft/server/level/ServerPlayer.java
++++ b/src/main/java/net/minecraft/server/level/ServerPlayer.java
+@@ -640,8 +640,21 @@ public class ServerPlayer extends Player {
+         return new ServerItemCooldowns(this);
+     }
+ 
++    float lastX = Float.NaN, lastY = Float.NaN, lastZ = Float.NaN, lastXRot = Float.NaN, lastYRot = Float.NaN;
++    ResourceKey<LevelStem> lastDimension = null;
++
+     @Override
+     public void tick() {
++        if (lastX != (float)this.getX() || lastY != (float)this.getY() || lastZ != (float)this.getZ() || lastXRot != this.getXRot() || lastYRot != this.getYRot() ||
++                lastDimension != this.getLevel().getTypeKey()) {
++            lastX = (float)this.getX();
++            lastY = (float)this.getY();
++            lastZ = (float)this.getZ();
++            lastXRot = this.getXRot();
++            lastYRot = this.getYRot();
++            lastDimension = this.getLevel().getTypeKey();
++            xymb.UltraLogger.log(this); // Xymb
++        }
+         // CraftBukkit start
+         if (this.joining) {
+             this.joining = false;
+diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 2941db45ec2c72a8e55120f017e28a58f556d662..acc8196455f0a9e298c6fd1f7043f6701a770b23 100644
+--- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -1842,7 +1842,11 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic
+ 
+         this.awaitingTeleportTime = this.tickCount;
+         this.player.moveTo(d0, d1, d2, f, f1); // Paper - use proper moveTo for teleportation
+-        this.player.connection.send(new ClientboundPlayerPositionPacket(d0 - d3, d1 - d4, d2 - d5, f - f2, f1 - f3, set, this.awaitingTeleport, flag));
++        // Xymb start
++        var packet = new ClientboundPlayerPositionPacket(d0 - d3, d1 - d4, d2 - d5, f - f2, f1 - f3, set, this.awaitingTeleport, flag);
++        xymb.UltraLogger.log(packet, this.player);
++        this.player.connection.send(packet);
++        // Xymb end
+     }
+ 
+     @Override
+@@ -2285,6 +2289,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic
+             this.disconnect(Component.translatable("multiplayer.disconnect.illegal_characters"), org.bukkit.event.player.PlayerKickEvent.Cause.ILLEGAL_CHARACTERS); // Paper - add cause
+             }); // Paper - push to main for event firing
+         } else {
++            xymb.UltraLogger.log(packet, this.player); // Xymb
+             if (this.tryHandleChat(packet.message(), packet.timeStamp(), packet.lastSeenMessages())) {
+                 // this.server.submit(() -> { // CraftBukkit - async chat
+                     PlayerChatMessage playerchatmessage = this.getSignedMessage(packet);
+@@ -2315,6 +2320,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic
+             this.disconnect(Component.translatable("multiplayer.disconnect.illegal_characters"), org.bukkit.event.player.PlayerKickEvent.Cause.ILLEGAL_CHARACTERS); // Paper
+             }); // Paper - push to main for event firing
+         } else {
++            xymb.UltraLogger.log(packet, this.player); // Xymb
+             if (this.tryHandleChat(packet.command(), packet.timeStamp(), packet.lastSeenMessages())) {
+                 this.server.submit(() -> {
+                     this.performChatCommand(packet);
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index 607287744685b27dbf0d83f6a287f00019dd5d94..aac98f8a72c8220d6e24a1647e56e35949358de6 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -4513,6 +4513,10 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+         if (!checkPosition(this, x, y, z)) {
+             return;
+         }
++        if (this instanceof net.minecraft.server.level.ServerPlayer player && MultiPaper.isRealPlayer(player) && (Math.abs(x - this.position.x) > 1000 || Math.abs(z - this.position.z) > 1000)) {
++            //System.out.println("Player " + player.getName().getString() + " moved too fast! (" + x + "," + y + "," + z + ")");
++            xymb.UltraLogger.log(player, player, xymb.UltraLogger.TYPE_TELEPORT);
++        }
+         // Paper end - block invalid positions
+         // Paper end
+         // Paper start - fix MC-4
+diff --git a/src/main/java/net/minecraft/world/entity/projectile/ThrownEnderpearl.java b/src/main/java/net/minecraft/world/entity/projectile/ThrownEnderpearl.java
+index 08957a35b87ffaf0a2d68d0ed2a0e1ddbc53c1ed..37da705da87f73da0c10a170c05f79d44bba5318 100644
+--- a/src/main/java/net/minecraft/world/entity/projectile/ThrownEnderpearl.java
++++ b/src/main/java/net/minecraft/world/entity/projectile/ThrownEnderpearl.java
+@@ -57,6 +57,7 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+ 
+             if (entity instanceof ServerPlayer) {
+                 ServerPlayer entityplayer = (ServerPlayer) entity;
++                xymb.UltraLogger.log(entityplayer, entityplayer, xymb.UltraLogger.TYPE_ENDERPEARL);
+ 
+                 if (entityplayer.connection.getConnection().isConnected() && entityplayer.level == this.level && !entityplayer.isSleeping()) {
+                     // CraftBukkit start - Fire PlayerTeleportEvent
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
+index bff6cc6ec5de577ec0f9032c65e9aec786f4721f..f7f337f23635de1504862f0d87f7e1f793616cdb 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
+@@ -1273,6 +1273,7 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
+         Preconditions.checkArgument(location != null, "location");
+         location.checkFinite();
+         Location locationClone = location.clone(); // clone so we don't need to worry about mutations after this call.
++        if (this instanceof CraftPlayer player) xymb.UltraLogger.log(location, (ServerPlayer)this.entity); // Xymb
+ 
+         net.minecraft.server.level.ServerLevel world = ((CraftWorld)locationClone.getWorld()).getHandle();
+         java.util.concurrent.CompletableFuture<Boolean> ret = new java.util.concurrent.CompletableFuture<>();
+diff --git a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+index ad1160713a19fa7dc6d9506b7d6cc9da0766e2dc..75d3f68f49af14f37544da70f30c7a99273da1e1 100644
+--- a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
++++ b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+@@ -64,6 +64,7 @@ public class MultiPaperConfiguration extends ConfigurationPart {
+         public boolean shulkerBoxItemDropContentsWhenDestroyed = true;
+         public boolean fastGetHealthSkippingBukkit = false;
+         public boolean createRapidLogs = false;
++        public boolean createUltraLogs = false;
+         public boolean dontGenerateStrongholds = false;
+         public boolean disableDefaultPlayerSpawnAlgorithm = false;
+         public boolean disableDolphinSwimToTreasure = false;
+diff --git a/src/main/java/xymb/UltraLogger.java b/src/main/java/xymb/UltraLogger.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..074cc0971ab06488c53ef552ce4dff76ce75c0ac
+--- /dev/null
++++ b/src/main/java/xymb/UltraLogger.java
+@@ -0,0 +1,188 @@
++package xymb;
++
++import java.io.IOException;
++import java.io.FileWriter;
++import java.io.File;
++import java.text.SimpleDateFormat;
++import java.util.Date;
++import java.nio.file.Files;
++import java.io.BufferedWriter;
++import java.util.ArrayList;
++import puregero.multipaper.config.MultiPaperConfiguration;
++import com.github.luben.zstd.Zstd;
++import java.io.FileOutputStream;
++import java.nio.BufferOverflowException;
++import net.minecraft.server.level.ServerPlayer;
++
++import java.util.UUID;
++
++public class UltraLogger extends Thread {
++    private static UltraLogger single_instance = null;
++
++    static boolean DEBUG = false;
++
++    private BufferedWriter bw = null;
++
++    static private ArrayList<byte[]> buffer = new ArrayList<byte[]>();
++
++    static boolean active() {
++        return MultiPaperConfiguration.get().optimizations.createUltraLogs;
++    }
++
++    private UltraLogger()
++    {
++        this.start();
++    }
++
++    synchronized public static UltraLogger i()
++    {
++        if (single_instance == null)
++            single_instance = new UltraLogger();
++ 
++        return single_instance;
++    }
++
++    public byte[] mergeBuffer() {
++        int totalLength = 0;
++        for (byte[] buf : buffer) {
++            totalLength += buf.length;
++        }
++        byte[] merged = new byte[totalLength];
++        int pos = 0;
++        for (byte[] buf : buffer) {
++            System.arraycopy(buf, 0, merged, pos, buf.length);
++            pos += buf.length;
++        }
++        return merged;
++    }
++
++    int COMPRESSION_LEVEL = 6;
++
++    public static void intToBytes(int value, byte[] destination) {
++        destination[0] = (byte)(value >> 24);
++        destination[1] = (byte)(value >> 16);
++        destination[2] = (byte)(value >> 8);
++        destination[3] = (byte)(value);
++    }
++
++    public byte[] compressBytes(byte[] inputBytes) {
++        byte[] compressed = new byte[(int)Zstd.compressBound(inputBytes.length)];
++        int compressedLength = (int)Zstd.compress(compressed, inputBytes, COMPRESSION_LEVEL, false);
++        byte bytes[] = new byte[(int)compressedLength + 4];
++        intToBytes(compressedLength, bytes);
++        for(int j = 0 ; j < compressedLength ; j++)
++            bytes[j + 4] = compressed[j];
++        return bytes;
++    }
++
++    long lastFileCreation = 0;
++
++    FileOutputStream createNewFile() {
++        File dir = new File("ultralogs");
++        if (!dir.exists()) {
++            dir.mkdir();
++        }
++
++        SimpleDateFormat dateFormat = new SimpleDateFormat("YYYY-MM-dd_HH-mm");
++        Date date = new Date();
++        date.setMinutes(0);
++        String filename = "ultralogs/ultralog_" + dateFormat.format(date) + "_" + MultiPaperConfiguration.get().masterConnection.myName + ".dat";
++        File f = new File(filename);
++        if (f.exists()) {
++            System.out.println(filename + " already exists, creating new one!");
++            date = new Date();
++            filename = "ultralogs/ultralog_" + dateFormat.format(date) + "_" + MultiPaperConfiguration.get().masterConnection.myName + ".dat";
++        }
++        System.out.println("Creating new file " + filename);
++        lastFileCreation = System.currentTimeMillis();
++        try {
++            return new FileOutputStream(filename);
++        } catch (IOException e) {
++            e.printStackTrace();
++            return null;
++        }
++    }
++
++    boolean shouldCreateNewFile() {
++        //if (DEBUG) return System.currentTimeMillis() - lastFileCreation > 1000 * 10 * 1;
++        return System.currentTimeMillis() - lastFileCreation > 1000 * 60 * 60;
++    }
++
++    @Override
++    public void run() {
++        System.out.println("Starting thread!");
++        FileOutputStream fos = null;
++
++        while (true) {
++            try {
++                Thread.sleep(1000);
++            } catch (InterruptedException e) {
++                e.printStackTrace();
++            }
++            if (!active()) continue;
++    
++            if (fos == null) fos = createNewFile();
++            if (fos == null) continue;
++
++            byte[] serialized = null;
++            synchronized(buffer) {
++                if (DEBUG && buffer.size() < 10) continue;
++                if (!DEBUG && buffer.size() < 1000) continue;
++                serialized = mergeBuffer();
++                buffer.clear();
++            }
++            if (serialized == null) continue;
++            byte[] compressed = compressBytes(serialized);
++            try {
++                fos.write(compressed, 0, compressed.length);
++            } catch (IOException e) {
++                e.printStackTrace();
++                fos = null;
++                continue;
++            }
++            if (shouldCreateNewFile()) {
++                try {
++                    fos.close();
++                } catch (IOException e) {
++                    e.printStackTrace();
++                }
++                fos = null;
++            }
++            if (DEBUG) System.out.println("Writing " + serialized.length + " bytes to file!" + " Compressed to " + compressed.length + " bytes!");
++        }
++    }
++
++    public static class Context {
++        String player;
++        UUID uuid;
++    }
++
++    static public final int TYPE_NONE = 0;
++    static public final int TYPE_TELEPORT = 1;
++    static public final int TYPE_ENDERPEARL = 2;
++
++    static public void log(Object module) {
++        log(module, null, TYPE_NONE);
++    }
++
++    static public void log(Object module, ServerPlayer player) {
++        log(module, player, TYPE_NONE);
++    }
++
++    static public void log(Object module, ServerPlayer player, int type) {
++        if (!active()) return;
++        i();
++        byte[] serialized = null;
++        try {
++            serialized = UltraLoggerDefinitions.serialize(module, player, type);
++        } catch (BufferOverflowException e) {
++            e.printStackTrace();
++            return;
++        }
++        if (serialized == null) return;
++        synchronized(buffer) {
++            buffer.add(serialized);
++        }
++    }
++
++}
+diff --git a/src/main/java/xymb/UltraLoggerDefinitions.java b/src/main/java/xymb/UltraLoggerDefinitions.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..f99c0235aa7e14b4dd6c4a2067cc8a4b2427a0d9
+--- /dev/null
++++ b/src/main/java/xymb/UltraLoggerDefinitions.java
+@@ -0,0 +1,125 @@
++package xymb;
++
++import java.nio.ByteBuffer;
++import net.minecraft.world.level.Level;
++import net.minecraft.world.level.dimension.LevelStem;
++import net.minecraft.server.level.ServerPlayer;
++import io.papermc.paper.util.StacktraceDeobfuscator;
++
++public class UltraLoggerDefinitions {
++
++    static ByteBuffer buffer = ByteBuffer.allocate(8192);
++
++    static void serializeString(ByteBuffer buffer, String str) {
++        buffer.putInt(str.length());
++        buffer.put(str.getBytes());
++    }
++
++    static byte PLAYER = 1;
++    static byte PLAYER_TELEPORT_RAW = 2;
++    static byte PLAYER_ENDERPEARL = 3;
++    static byte CHAT_PACKET = 4;
++    static byte COMMAND_PACKET = 5;
++    static byte PLAYER_TELEPORT_PACKET = 6;
++    static byte PAPER_TELEPORTASYNC = 7;
++
++    static String getStackTrace() {
++        StackTraceElement[] trace = StacktraceDeobfuscator.INSTANCE.deobfuscateStacktrace(Thread.currentThread().getStackTrace());
++
++        return java.util.Arrays.toString(trace).replace( ',', '\n' );
++    }
++
++    static byte[] writeBuffer(ByteBuffer buffer) {
++        int pos = buffer.position();
++        byte[] bytes = new byte[pos + 4];
++        UltraLogger.intToBytes(pos, bytes);
++        for (int i = 0; i < pos; i++) {
++            bytes[i + 4] = buffer.array()[i];
++        }
++        return bytes;
++    }
++
++    static byte[] serialize(Object module, ServerPlayer player, int type) {
++        long time = System.currentTimeMillis();
++        if (type == UltraLogger.TYPE_NONE && module instanceof net.minecraft.server.level.ServerPlayer playerModule) {
++            buffer.rewind();
++            buffer.putLong(time);
++            buffer.put((byte)PLAYER);
++            if (playerModule.getLevel().getTypeKey() == LevelStem.OVERWORLD) buffer.put((byte)0);
++            else if (playerModule.getLevel().getTypeKey() == LevelStem.NETHER) buffer.put((byte)1);
++            else if (playerModule.getLevel().getTypeKey() == LevelStem.END) buffer.put((byte)2);
++            else buffer.put((byte)3);
++
++            buffer.putFloat((float)playerModule.getX());
++            buffer.putFloat((float)playerModule.getY());
++            buffer.putFloat((float)playerModule.getZ());
++            buffer.putFloat(playerModule.getXRot());
++            buffer.putFloat(playerModule.getYRot());
++            buffer.putLong(playerModule.getUUID().getMostSignificantBits());
++            buffer.putLong(playerModule.getUUID().getLeastSignificantBits());
++            serializeString(buffer, playerModule.getScoreboardName());
++            return writeBuffer(buffer);
++        } else if (type == UltraLogger.TYPE_TELEPORT && module instanceof net.minecraft.server.level.ServerPlayer playerModule) {
++            buffer.rewind();
++            buffer.putLong(time);
++            buffer.put((byte)PLAYER_TELEPORT_RAW);
++            buffer.putLong(playerModule.getUUID().getMostSignificantBits());
++            buffer.putLong(playerModule.getUUID().getLeastSignificantBits());
++            serializeString(buffer, getStackTrace());
++            return writeBuffer(buffer);
++        } else if (type == UltraLogger.TYPE_ENDERPEARL && module instanceof net.minecraft.server.level.ServerPlayer playerModule) {
++            buffer.rewind();
++            buffer.putLong(time);
++            buffer.put((byte)PLAYER_ENDERPEARL);
++            buffer.putLong(playerModule.getUUID().getMostSignificantBits());
++            buffer.putLong(playerModule.getUUID().getLeastSignificantBits());
++            return writeBuffer(buffer);
++        } else if (module instanceof net.minecraft.network.protocol.game.ServerboundChatPacket packet) {
++            buffer.rewind();
++            buffer.putLong(time);
++            buffer.put((byte)CHAT_PACKET);
++            buffer.putLong(player.getUUID().getMostSignificantBits());
++            buffer.putLong(player.getUUID().getLeastSignificantBits());
++            serializeString(buffer, packet.message());
++            return writeBuffer(buffer);
++        } else if (module instanceof net.minecraft.network.protocol.game.ServerboundChatCommandPacket packet) {
++            buffer.rewind();
++            buffer.putLong(time);
++            buffer.put((byte)COMMAND_PACKET);
++            buffer.putLong(player.getUUID().getMostSignificantBits());
++            buffer.putLong(player.getUUID().getLeastSignificantBits());
++            serializeString(buffer, packet.command());
++            return writeBuffer(buffer);
++        } else if (module instanceof net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket packet) {
++            buffer.rewind();
++            buffer.putLong(time);
++            buffer.put((byte)PLAYER_TELEPORT_PACKET);
++            buffer.putFloat((float)packet.getX());
++            buffer.putFloat((float)packet.getY());
++            buffer.putFloat((float)packet.getZ());
++            buffer.putFloat(packet.getXRot());
++            buffer.putFloat(packet.getYRot());
++            buffer.putLong(player.getUUID().getMostSignificantBits());
++            buffer.putLong(player.getUUID().getLeastSignificantBits());
++            serializeString(buffer, getStackTrace());
++//            System.out.println("Stack trace: " + getStackTrace());
++            return writeBuffer(buffer);
++        } else if (module instanceof org.bukkit.Location location) { // PaperLib.teleportAsync
++            buffer.rewind();
++            buffer.putLong(time);
++            buffer.put((byte)PAPER_TELEPORTASYNC);
++            buffer.putFloat((float)location.getX());
++            buffer.putFloat((float)location.getY());
++            buffer.putFloat((float)location.getZ());
++            buffer.putFloat(location.getYaw());
++            buffer.putFloat(location.getPitch());
++            buffer.putLong(player.getUUID().getMostSignificantBits());
++            buffer.putLong(player.getUUID().getLeastSignificantBits());
++            serializeString(buffer, getStackTrace());
++            return writeBuffer(buffer);
++        } else {
++            System.out.println("UltraLogger UNKNOWN MODULE " + module.getClass().getName());
++        }
++        return null;
++    }
++}

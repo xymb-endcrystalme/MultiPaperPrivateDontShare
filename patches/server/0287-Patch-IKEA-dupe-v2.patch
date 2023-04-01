@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Sun, 12 Mar 2023 02:00:20 +0100
+Subject: [PATCH] Patch IKEA dupe v2.
+
+
+diff --git a/src/main/java/net/minecraft/network/Connection.java b/src/main/java/net/minecraft/network/Connection.java
+index 625f8a041a55be56ad05853b13aafec91ea0bd5a..2ac9d177e5030496ad337cc0f2c0f02279a72256 100644
+--- a/src/main/java/net/minecraft/network/Connection.java
++++ b/src/main/java/net/minecraft/network/Connection.java
+@@ -634,7 +634,6 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+             this.disconnectedReason = disconnectReason;
+             if (this.disconnectedReason.getString().contains("Exception")) {
+                 Connection.LOGGER.info("Disconnected reason: {}", disconnectedReason.getString()); // Xymb
+-                Thread.dumpStack(); // Xymb
+             }
+         }
+ 
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index c0769b6c2b09b2ecafab632e7c83c3cbee9258c2..607287744685b27dbf0d83f6a287f00019dd5d94 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -2976,6 +2976,17 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource {
+             }
+             // Xymb end
+ 
++            if (this instanceof net.minecraft.world.entity.vehicle.ChestBoat || this instanceof net.minecraft.world.entity.animal.horse.AbstractChestedHorse) {
++            // Spigot Start
++            if (this.getBukkitEntity() instanceof org.bukkit.inventory.InventoryHolder) {
++                for (org.bukkit.entity.HumanEntity h : Lists.newArrayList(((org.bukkit.inventory.InventoryHolder) this.getBukkitEntity()).getInventory().getViewers())) {
++                    h.closeInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason.UNLOADED); // Paper
++                }
++            }
++            // Spigot End
++        }
++
++
+             entity.boardingCooldown = 60;
+         }
+         return true; // CraftBukkit
