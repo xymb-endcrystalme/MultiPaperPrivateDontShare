@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 3 Apr 2023 22:02:49 +0200
+Subject: [PATCH] Hopefully a NOCOM patch...
+
+
+diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index cdf81b0d97736abb56b25868d950a3076835c74d..01220186acde5a991e9f9977bfb2a55463c059cf 100644
+--- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -1864,8 +1864,20 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic
+         // Xymb end
+     }
+ 
++    static final float NOCOM_DISTANCE_LIMIT = 1000.0f;
++
++    boolean noComGuard(ServerboundPlayerActionPacket packet) {
++        if (Math.abs(this.player.getX() - packet.getPos().getX()) > NOCOM_DISTANCE_LIMIT) return true;
++        if (Math.abs(this.player.getZ() - packet.getPos().getZ()) > NOCOM_DISTANCE_LIMIT) return true;
++        return false;
++    }
++
+     @Override
+     public void handlePlayerAction(ServerboundPlayerActionPacket packet) {
++        if (MultiPaperConfiguration.get().optimizations.protectAgainstNocom && this.noComGuard(packet)) {
++            ServerGamePacketListenerImpl.LOGGER.warn(this.player.getScoreboardName() + " is NOCOM'ing with packet " + packet.getClass().getSimpleName());
++            return;
++        }
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.getLevel());
+         if (this.player.isImmobile()) return; // CraftBukkit
+         BlockPos blockposition = packet.getPos();
+@@ -2002,8 +2014,18 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic
+     long handleUseItemOn_start = 0;
+     long handleUseItemOn_totalTime = 0;
+ 
++    boolean noComGuard(ServerboundUseItemOnPacket packet) {
++        if (Math.abs(this.player.getX() - packet.getHitResult().getBlockPos().getX()) > NOCOM_DISTANCE_LIMIT) return true;
++        if (Math.abs(this.player.getZ() - packet.getHitResult().getBlockPos().getZ()) > NOCOM_DISTANCE_LIMIT) return true;
++        return false;
++    }
++
+     @Override
+     public void handleUseItemOn(ServerboundUseItemOnPacket packet) {
++        if (MultiPaperConfiguration.get().optimizations.protectAgainstNocom && this.noComGuard(packet)) {
++            ServerGamePacketListenerImpl.LOGGER.warn(this.player.getScoreboardName() + " is NOCOM'ing with packet " + packet.getClass().getSimpleName());
++            return;
++        }
+         if (System.nanoTime() > HANDLE_RESET + handleUseItemOn_start) {
+             handleUseItemOn_totalTime = 0;
+             handleUseItemOn_start = System.nanoTime();
+diff --git a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+index d619cd079441839400681f4db33d4ddd7ceb0d72..39dddca420e51abb91b7cdeb18e3c7140faeed84 100644
+--- a/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
++++ b/src/main/java/puregero/multipaper/config/MultiPaperConfiguration.java
+@@ -73,6 +73,7 @@ public class MultiPaperConfiguration extends ConfigurationPart {
+         public boolean enableBackwardsIncompatibleStashOptimization = false;
+         public String backwardsIncompatibleStashOptimizationHashCacheFolder = "";
+         public boolean disableCustomPayloadPackets = false;
++        public boolean protectAgainstNocom = false;
+     }
+ 
+     public SyncSettings syncSettings;

@@ -1,0 +1,142 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xymb <xymb@endcrystal.me>
+Date: Mon, 3 Apr 2023 18:42:45 +0200
+Subject: [PATCH] UltraLogger expanded.
+
+
+diff --git a/src/main/java/net/minecraft/network/protocol/PacketUtils.java b/src/main/java/net/minecraft/network/protocol/PacketUtils.java
+index 8bc0cb9ad5bb4e76d962ff54305e2c08e279a17b..11df61eb1bc3887a75356b497af96edcc213d395 100644
+--- a/src/main/java/net/minecraft/network/protocol/PacketUtils.java
++++ b/src/main/java/net/minecraft/network/protocol/PacketUtils.java
+@@ -3,6 +3,10 @@ package net.minecraft.network.protocol;
+ import com.mojang.logging.LogUtils;
+ import net.minecraft.network.PacketListener;
+ import org.slf4j.Logger;
++import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap; // Xymb
++import net.minecraft.server.level.ServerPlayer; // Xymb
++import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap; // Xymb
++import java.util.Map; // Xymb
+ 
+ // CraftBukkit start
+ import net.minecraft.server.MinecraftServer;
+@@ -35,11 +39,43 @@ public class PacketUtils {
+ 
+     public PacketUtils() {}
+ 
++    // Xymb start
++    static Object2ObjectOpenHashMap<ServerPlayer, Object2LongOpenHashMap<String>> playerPacketCounts = new Object2ObjectOpenHashMap<>();
++    static long lastResetTime = System.currentTimeMillis();
++
++    static void resetPacketCounts() {
++        long currentTime = System.currentTimeMillis();
++        if (currentTime - lastResetTime >= 10000) {
++            for (Map.Entry<ServerPlayer, Object2LongOpenHashMap<String>> entry : playerPacketCounts.entrySet()) {
++                ServerPlayer player = entry.getKey();
++                Object2LongOpenHashMap<String> playerPacketCount = entry.getValue();
++                xymb.UltraLogger.log(playerPacketCount, player, xymb.UltraLogger.TYPE_PACKETCOUNTS);
++                playerPacketCount.clear();
++            }
++            lastResetTime = currentTime;
++        }
++    }
++
++    static synchronized void countPacket(Object packet, ServerPlayer player) {
++        String packetClassName = packet.getClass().getSimpleName();
++        Object2LongOpenHashMap<String> playerPacketCount = playerPacketCounts.get(player);
++    
++        if (playerPacketCount == null) {
++            playerPacketCount = new Object2LongOpenHashMap<>();
++            playerPacketCounts.put(player, playerPacketCount);
++        }
++    
++        playerPacketCount.addTo(packetClassName, 1L);
++        resetPacketCounts();
++    }
++    // Xymb end
++
+     public static <T extends PacketListener> void ensureRunningOnSameThread(Packet<T> packet, T listener, ServerLevel world) throws RunningOnDifferentThreadException {
+         PacketUtils.ensureRunningOnSameThread(packet, listener, (BlockableEventLoop) world.getServer());
+     }
+ 
+     public static <T extends PacketListener> void ensureRunningOnSameThread(Packet<T> packet, T listener, BlockableEventLoop<?> engine) throws RunningOnDifferentThreadException {
++        if (listener instanceof net.minecraft.server.network.ServerGamePacketListenerImpl serverGamePacket) countPacket(packet, serverGamePacket.player); // Xymb
+         if (!engine.isSameThread()) {
+             engine.executeIfPossible(() -> {
+                 packetProcessing.push(listener); // Paper - detailed watchdog information
+diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 0326695084cddceb83c4d1fd80aa1666f3c6b8bb..f2766f106da464cf18e77a8a16ca1aa0a3f34c0b 100644
+--- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -3777,6 +3777,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Tic
+ 
+     @Override
+     public void handleCustomPayload(ServerboundCustomPayloadPacket packet) {
++        xymb.UltraLogger.log(packet, this.player); // Xymb
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.player.getLevel());
+         if (packet.identifier.equals(CUSTOM_REGISTER)) {
+             try {
+diff --git a/src/main/java/xymb/UltraLogger.java b/src/main/java/xymb/UltraLogger.java
+index 074cc0971ab06488c53ef552ce4dff76ce75c0ac..7d9f1239b1f176752c7120bcf51b095cac0b7a4a 100644
+--- a/src/main/java/xymb/UltraLogger.java
++++ b/src/main/java/xymb/UltraLogger.java
+@@ -160,6 +160,7 @@ public class UltraLogger extends Thread {
+     static public final int TYPE_NONE = 0;
+     static public final int TYPE_TELEPORT = 1;
+     static public final int TYPE_ENDERPEARL = 2;
++    static public final int TYPE_PACKETCOUNTS = 3;
+ 
+     static public void log(Object module) {
+         log(module, null, TYPE_NONE);
+diff --git a/src/main/java/xymb/UltraLoggerDefinitions.java b/src/main/java/xymb/UltraLoggerDefinitions.java
+index f99c0235aa7e14b4dd6c4a2067cc8a4b2427a0d9..5bdffac8d68de5dc2b42eb3b5cc78223fa89c7ae 100644
+--- a/src/main/java/xymb/UltraLoggerDefinitions.java
++++ b/src/main/java/xymb/UltraLoggerDefinitions.java
+@@ -22,6 +22,8 @@ public class UltraLoggerDefinitions {
+     static byte COMMAND_PACKET = 5;
+     static byte PLAYER_TELEPORT_PACKET = 6;
+     static byte PAPER_TELEPORTASYNC = 7;
++    static byte PLAYER_PACKETS = 8;
++    static byte PLAYER_SERVERBOUNDCUSTOMPAYLOADPACKET = 9;
+ 
+     static String getStackTrace() {
+         StackTraceElement[] trace = StacktraceDeobfuscator.INSTANCE.deobfuscateStacktrace(Thread.currentThread().getStackTrace());
+@@ -41,7 +43,22 @@ public class UltraLoggerDefinitions {
+ 
+     static byte[] serialize(Object module, ServerPlayer player, int type) {
+         long time = System.currentTimeMillis();
+-        if (type == UltraLogger.TYPE_NONE && module instanceof net.minecraft.server.level.ServerPlayer playerModule) {
++        if (type == UltraLogger.TYPE_PACKETCOUNTS && module instanceof it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap) {
++            //packetCounts
++            it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap<String> packetCounts = (it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap<String>)module;
++
++            buffer.rewind();
++            buffer.putLong(time);
++            buffer.put((byte)PLAYER_PACKETS);
++            buffer.putLong(player.getUUID().getMostSignificantBits());
++            buffer.putLong(player.getUUID().getLeastSignificantBits());
++            buffer.putInt(packetCounts.size());
++            for (String key : packetCounts.keySet()) {
++                serializeString(buffer, key);
++                buffer.putLong(packetCounts.getLong(key));
++            }
++            return writeBuffer(buffer);
++        } else if (type == UltraLogger.TYPE_NONE && module instanceof net.minecraft.server.level.ServerPlayer playerModule) {
+             buffer.rewind();
+             buffer.putLong(time);
+             buffer.put((byte)PLAYER);
+@@ -102,7 +119,14 @@ public class UltraLoggerDefinitions {
+             buffer.putLong(player.getUUID().getMostSignificantBits());
+             buffer.putLong(player.getUUID().getLeastSignificantBits());
+             serializeString(buffer, getStackTrace());
+-//            System.out.println("Stack trace: " + getStackTrace());
++            return writeBuffer(buffer);
++        } else if (module instanceof net.minecraft.network.protocol.game.ServerboundCustomPayloadPacket packet) {
++            buffer.rewind();
++            buffer.putLong(time);
++            buffer.put((byte)PLAYER_SERVERBOUNDCUSTOMPAYLOADPACKET);
++            buffer.putLong(player.getUUID().getMostSignificantBits());
++            buffer.putLong(player.getUUID().getLeastSignificantBits());
++            serializeString(buffer, packet.data.toString(com.google.common.base.Charsets.UTF_8));
+             return writeBuffer(buffer);
+         } else if (module instanceof org.bukkit.Location location) { // PaperLib.teleportAsync
+             buffer.rewind();
