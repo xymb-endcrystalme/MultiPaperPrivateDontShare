@@ -1,0 +1,627 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ivan Pekov <ivan@mrivanplays.com>
+Date: Wed, 25 Jan 2023 17:45:26 +0200
+Subject: [PATCH] General IO improvements
+
+
+diff --git a/src/main/java/puregero/multipaper/MultiPaper.java b/src/main/java/puregero/multipaper/MultiPaper.java
+index ef36230fc353bb710aa0df8c0e6b6ca18b759fe5..05eb412f860dabad20ed3ad97990f5ce33a69909 100644
+--- a/src/main/java/puregero/multipaper/MultiPaper.java
++++ b/src/main/java/puregero/multipaper/MultiPaper.java
+@@ -392,11 +392,20 @@ public class MultiPaper {
+         int uncompressedLength = bytes.length;
+         if (getConnection().chunkCompression == WriteChunkMessage.COMPRESSION_DEFLATE) {
+             if (bytes.length > 0) {
++                /*
+                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                 DeflaterOutputStream deflateOut = new DeflaterOutputStream(baos);
+                 deflateOut.write(bytes);
+                 deflateOut.close();
+                 bytes = baos.toByteArray();
++                 */
++                try (
++                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
++                        DeflaterOutputStream deflateOut = new DeflaterOutputStream(baos)
++                ) {
++                    deflateOut.write(bytes);
++                    bytes = baos.toByteArray();
++                }
+             }
+             getConnection().send(new WriteChunkMessage(world, path, cx, cz, bytes, WriteChunkMessage.COMPRESSION_DEFLATE, uncompressedLength));
+         } else if (getConnection().chunkCompression == WriteChunkMessage.COMPRESSION_ZSTD) {
+@@ -450,43 +459,78 @@ public class MultiPaper {
+     public static CompoundTag readLevel(String world) throws IOException {
+         byte[] data = getConnection().sendAndAwaitReply(new ReadLevelMessage(world), DataMessageReply.class).thenApply(message -> message.data).join();
+ 
+-        return data.length == 0 ? null : NbtIo.readCompressed(new ByteArrayInputStream(data));
++        // dude....
++        //return data.length == 0 ? null : NbtIo.readCompressed(new ByteArrayInputStream(data));
++        if (data.length == 0) { return null; }
++        try (ByteArrayInputStream in = new ByteArrayInputStream(data)) {
++            return NbtIo.readCompressed(in);
++        }
+     }
+ 
+     public static void writeLevel(String world, CompoundTag compoundTag) throws IOException {
+-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
++        // NOOOOOOOOOOOOOOOO WHY
++        try (ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+         NbtIo.writeCompressed(compoundTag, buffer);
+         getConnection().send(new WriteLevelMessage(world, buffer.toByteArray()), message -> { /* do nothing */ });
++        }
+     }
+ 
+     public static String readJson(String name) throws IOException {
+         if (MultiPaperConfiguration.get().syncSettings.syncJsonFiles) {
+             return getConnection().sendAndAwaitReply(new ReadJsonMessage(name), DataMessageReply.class).thenApply(message -> new String(message.data, StandardCharsets.UTF_8)).join();
++        } else {
++            File file = new File(name);
++            if (file.isFile()) {
++                try (BufferedReader in = new BufferedReader(new FileReader(file))) {
++                    return in.readLine();
++                }
++            } else {
++                return null;
++            }
++        }
++        /*
+         } else if (new File(name).isFile()) {
+             return Files.readString(new File(name).toPath());
+         } else {
+             return null;
+         }
++         */
+     }
+ 
+     public static void writeJson(String name, String json) throws IOException {
+         if (MultiPaperConfiguration.get().syncSettings.syncJsonFiles) {
+             getConnection().send(new WriteJsonMessage(name, json.getBytes(StandardCharsets.UTF_8)), message -> { /* do nothing */ });
+         } else {
++            /*
+             Files.writeString(new File(name).toPath(), json);
++             */
++            File file = new File(name);
++            if (!file.exists()) {
++                if (!file.getParentFile().exists()) {
++                    file.getParentFile().mkdirs();
++                }
++                file.createNewFile();
++            }
++            try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
++                writer.write(json);
++            }
+         }
+     }
+ 
+     public static CompoundTag readPlayer(String world, String uuid) throws IOException {
+         byte[] data = getConnection().sendAndAwaitReply(new ReadPlayerMessage(world, uuid), DataMessageReply.class).thenApply(message -> message.data).join();
+ 
+-        return data.length == 0 ? null : NbtIo.readCompressed(new ByteArrayInputStream(data));
++        if (data.length == 0) { return null; }
++        try (ByteArrayInputStream in = new ByteArrayInputStream(data)) {
++            return NbtIo.readCompressed(in);
++        }
+     }
+ 
+     public static void writePlayer(String world, String uuid, CompoundTag compoundTag) throws IOException {
+-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+-        NbtIo.writeCompressed(compoundTag, buffer);
+-        getConnection().send(new WritePlayerMessage(world, uuid, buffer.toByteArray()), message -> { /* do nothing */ });
++        try (ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
++            NbtIo.writeCompressed(compoundTag, buffer);
++            getConnection().send(new WritePlayerMessage(world, uuid, buffer.toByteArray()), message -> {});
++        }
+     }
+ 
+     public static String readAdvancements(String world, String uuid) {
+@@ -524,9 +568,12 @@ public class MultiPaper {
+     }
+ 
+     public static void writeData(String path, CompoundTag compoundTag) throws IOException {
+-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+-        NbtIo.writeCompressed(compoundTag, buffer);
+-        getConnection().send(new WriteDataMessage(path, buffer.toByteArray()), message -> { /* do nothing */ });
++        try (
++                ByteArrayOutputStream buffer = new ByteArrayOutputStream()
++        ) {
++            NbtIo.writeCompressed(compoundTag, buffer);
++            getConnection().send(new WriteDataMessage(path, buffer.toByteArray()), message -> {});
++        }
+     }
+ 
+     private static String getWorld(File path) {
+@@ -573,13 +620,32 @@ public class MultiPaper {
+         if (compoundTag == null) {
+             return new byte[0];
+         }
++        // Yes yes it's a good idea to have them buffers lying around
++        /*
+         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+         NbtIo.write(compoundTag, new DataOutputStream(buffer));
+         return buffer.toByteArray();
++         */
++        try (
++                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
++                DataOutputStream outputStream = new DataOutputStream(buffer)
++        ) {
++            NbtIo.write(compoundTag, outputStream);
++            return buffer.toByteArray();
++        }
+     }
+ 
+     public static CompoundTag nbtFromBytes(byte[] data) throws IOException {
+-        return NbtIo.read(new DataInputStream(new ByteArrayInputStream(data)));
++        // Just return an empty tag if there's no data maybe?
++        if (data.length == 0) {
++            return new CompoundTag();
++        }
++
++        try (
++                DataInputStream input = new DataInputStream(new ByteArrayInputStream(data))
++        ) {
++            return NbtIo.read(input);
++        }
+     }
+ 
+     public static byte[] nbtCompressToBytes(CompoundTag compoundTag) throws IOException {
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/AddItemToContainerPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/AddItemToContainerPacket.java
+index 77e8fd3417e25ed9f12e865413c635aad9f580a8..4597427228becc098c8b45bd24619393c1e0b835 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/AddItemToContainerPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/AddItemToContainerPacket.java
+@@ -43,12 +43,15 @@ public class AddItemToContainerPacket extends ExternalServerPacket {
+         world = in.readUtf();
+         pos = BlockPos.of(in.readLong());
+         slot = in.readByte();
++        itemStack = ItemStack.of(in.readNbt());
+ 
++        /*
+         try {
+             itemStack = ItemStack.of(MultiPaper.nbtFromBytes(in.readByteArray()));
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++         */
+     }
+ 
+     @Override
+@@ -56,12 +59,15 @@ public class AddItemToContainerPacket extends ExternalServerPacket {
+         out.writeUtf(world);
+         out.writeLong(pos.asLong());
+         out.writeByte(slot);
++        out.writeNbt(itemStack.save(new CompoundTag()));
+ 
++        /*
+         try {
+             out.writeByteArray(MultiPaper.nbtToBytes(itemStack.save(new CompoundTag())));
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++         */
+     }
+ 
+     @Override
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/AddItemToEntityContainerPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/AddItemToEntityContainerPacket.java
+index 6a9eccfbb3b5f2eaab003b65f626340409d42233..4f02e9d62937c03958fbff1f031742c321a2da5b 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/AddItemToEntityContainerPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/AddItemToEntityContainerPacket.java
+@@ -39,12 +39,15 @@ public class AddItemToEntityContainerPacket extends ExternalServerPacket {
+         world = in.readUtf();
+         uuid = in.readUUID();
+         slot = in.readByte();
++        itemStack = ItemStack.of(in.readNbt());
+ 
++        /*
+         try {
+             itemStack = ItemStack.of(MultiPaper.nbtFromBytes(in.readByteArray()));
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++         */
+     }
+ 
+     @Override
+@@ -52,12 +55,15 @@ public class AddItemToEntityContainerPacket extends ExternalServerPacket {
+         out.writeUtf(world);
+         out.writeUUID(uuid);
+         out.writeByte(slot);
++        out.writeNbt(itemStack.save(new CompoundTag()));
+ 
++        /*
+         try {
+             out.writeByteArray(MultiPaper.nbtToBytes(itemStack.save(new CompoundTag())));
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++         */
+     }
+ 
+     @Override
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateEffectPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateEffectPacket.java
+index 38c8469e96a680b74a36c096bdbbfd1ffce75ac8..3540b6640eaa3ed033df0d8355d7bab501f256eb 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateEffectPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/EntityUpdateEffectPacket.java
+@@ -19,27 +19,21 @@ public class EntityUpdateEffectPacket extends ExternalServerPacket {
+     private final String world;
+     private final UUID uuid;
+     private final boolean remove;
+-    private final byte[] data;
++    private final CompoundTag data; // MultiPaper - MrIvanPlays - why byte array bruh
+ 
+     public EntityUpdateEffectPacket(Entity entity, MobEffectInstance effect, boolean remove) {
+         this.world = ((ServerLevel) entity.level).convertable.getLevelId();
+         this.uuid = entity.getUUID();
+         this.remove = remove;
+ 
+-        CompoundTag tag = effect.save(new CompoundTag());
+-
+-        try {
+-            this.data = MultiPaper.nbtToBytes(tag);
+-        } catch (IOException e) {
+-            throw new RuntimeException(e);
+-        }
++        this.data = effect.save(new CompoundTag()); // MultiPaper - MrIvanPlays
+     }
+ 
+     public EntityUpdateEffectPacket(FriendlyByteBuf in) {
+         this.world = in.readUtf();
+         this.uuid = in.readUUID();
+         this.remove = in.readBoolean();
+-        this.data = in.readByteArray();
++        this.data = in.readNbt(); // MultiPaper - MrIvanPlays
+     }
+ 
+     @Override
+@@ -47,23 +41,24 @@ public class EntityUpdateEffectPacket extends ExternalServerPacket {
+         out.writeUtf(world);
+         out.writeUUID(uuid);
+         out.writeBoolean(remove);
+-        out.writeByteArray(data);
++        out.writeNbt(data); // MultiPaper - MrIvanPlays
+     }
+ 
+     @Override
+     public void handle(ExternalServerConnection connection) {
+         MultiPaper.runSync(() -> {
+-            try {
++            //try {
+                 ServerLevel level = ((CraftWorld) Bukkit.getWorld(world)).getHandle();
+                 Entity entity = level.getEntity(uuid);
+-                CompoundTag tag = MultiPaper.nbtFromBytes(data);
+-                MobEffectInstance effect = MobEffectInstance.load(tag);
++                MobEffectInstance effect = MobEffectInstance.load(data); // MultiPaper - MrIvanPlays
+                 if (entity != null) {
+                     MultiPaperEffectsHandler.handle(entity, effect, remove);
+                 }
++                /*
+             } catch (IOException e) {
+                 e.printStackTrace();
+             }
++                 */
+         });
+     }
+ }
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/PlayerInventoryUpdatePacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/PlayerInventoryUpdatePacket.java
+index 3517b13be13c729056c6e05291b7f95312476432..c4ed01b10ce3086f9c1d69eb45d37a62c82fe15b 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/PlayerInventoryUpdatePacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/PlayerInventoryUpdatePacket.java
+@@ -33,24 +33,30 @@ public class PlayerInventoryUpdatePacket extends ExternalServerPacket {
+     public PlayerInventoryUpdatePacket(FriendlyByteBuf in) {
+         uuid = in.readUUID();
+         component = in.readUtf();
++        tag = in.readNbt();
+ 
++        /*
+         try {
+             tag = MultiPaper.nbtFromBytes(in.readByteArray());
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++         */
+     }
+ 
+     @Override
+     public void write(FriendlyByteBuf out) {
+         out.writeUUID(uuid);
+         out.writeUtf(component);
++        out.writeNbt(tag);
+ 
++        /*
+         try {
+             out.writeByteArray(MultiPaper.nbtToBytes(tag));
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++         */
+     }
+ 
+     @Override
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/RaidUpdatePacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/RaidUpdatePacket.java
+index ac2c296aa4d7711345d70d9d65175b339c450a84..184c860d5a41254ba517adb238f93c702ef07c64 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/RaidUpdatePacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/RaidUpdatePacket.java
+@@ -15,7 +15,7 @@ import java.io.IOException;
+ 
+ public class RaidUpdatePacket extends ExternalServerPacket {
+     private final String world;
+-    private final byte[] data;
++    private final CompoundTag data;
+ 
+     public RaidUpdatePacket(Raid raid) {
+         this.world = raid.getLevel().getWorld().getName();
+@@ -24,22 +24,18 @@ public class RaidUpdatePacket extends ExternalServerPacket {
+ 
+         raid.save(tag);
+ 
+-        try {
+-            this.data = MultiPaper.nbtToBytes(tag);
+-        } catch (IOException e) {
+-            throw new RuntimeException(e);
+-        }
++        this.data = tag;
+     }
+ 
+     public RaidUpdatePacket(FriendlyByteBuf in) {
+         this.world = in.readUtf();
+-        this.data = in.readByteArray();
++        this.data = in.readNbt();
+     }
+ 
+     @Override
+     public void write(FriendlyByteBuf out) {
+         out.writeUtf(world);
+-        out.writeByteArray(data);
++        out.writeNbt(data);
+     }
+ 
+     public static void broadcastUpdate(Raid raid) {
+@@ -49,19 +45,18 @@ public class RaidUpdatePacket extends ExternalServerPacket {
+     @Override
+     public void handle(ExternalServerConnection connection) {
+         MultiPaper.runSync(() -> {
+-            try {
++            //try {
+                 World bukkitWorld = Bukkit.getWorld(world);
+ 
+                 if (bukkitWorld instanceof CraftWorld craftWorld) {
+                     ServerLevel level = craftWorld.getHandle();
+-                    CompoundTag tag = MultiPaper.nbtFromBytes(data);
+-                    int id = tag.getInt("Id");
++                    int id = data.getInt("Id");
+ 
+                     Raid raid = level.getRaids().raidMap.get(id);
+                     if (raid == null) {
+-                        raid = new Raid(level, tag);
++                        raid = new Raid(level, data);
+                     } else {
+-                        raid.load(level, tag);
++                        raid.load(level, data);
+                     }
+ 
+                     level.getRaids().raidMap.put(raid.getId(), raid);
+@@ -70,9 +65,11 @@ public class RaidUpdatePacket extends ExternalServerPacket {
+                         level.getRaids().chunkToRaidIdMap.put(ChunkPos.asLong(raid.getCenter()), raid.getId());
+                     }
+                 }
++                /*
+             } catch (IOException e) {
+                 e.printStackTrace();
+             }
++                 */
+         });
+     }
+ }
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
+index 5edc90145a9aea2bb4e5f4dba403fc3320940d8d..4abeb9b0dfb4a690e4a7cf2bbcb9e6bcf09e1a4c 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/SendChunkPacket.java
+@@ -30,35 +30,43 @@ public class SendChunkPacket extends ExternalServerPacket {
+     private final String world;
+     private final int cx;
+     private final int cz;
+-    private final byte[] data;
++    private final boolean hasData;
++    private final CompoundTag tag; // MultiPaper - MrIvanPlays - might be a good idea to write the tag properly
+ 
+     public SendChunkPacket(String world, int cx, int cz, CompoundTag tag) {
+         this.world = world;
+         this.cx = cx;
+         this.cz = cz;
+ 
+-        try {
++        //try { // MultiPaper - MrIvanPlays
+             if (tag == null) {
+-                data = new byte[0];
++                this.tag = null;
++                hasData = false;
+             } else {
+                 long startTime = System.nanoTime();
+-                tag = tag.copy();
++                //tag = tag.copy(); // MultiPaper - MrIvanPlays - why the copy?
+                 xymb.NBTDeduplicator.deduplicateContainersOnWrite(tag);
+-                data = MultiPaper.nbtToBytes(tag);
++                this.tag = tag;
++                hasData = true;
+                 if (System.nanoTime() - startTime > 50000000) {
+                     System.out.println("SEND_CHUNK_JUMBO_PACKET " + ((System.nanoTime() - startTime) / 1000000.) + " " + world + " " + cx + " " + cz);
+                 }
+             }
++            /* // MultiPaper - MrIvanPlays - comment this out
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++             */ // MultiPaper - MrIvanPlays - comment this out
+     }
+ 
+     public SendChunkPacket(FriendlyByteBuf in) {
+         world = in.readUtf();
+         cx = in.readInt();
+         cz = in.readInt();
+-        data = in.readByteArray();
++        // MultiPaper start - MrIvanPlays - better writes
++        hasData = in.readBoolean();
++        if (hasData) { this.tag = in.readNbt(); } else { this.tag = null; }
++        // MultiPaper end
+     }
+ 
+     @Override
+@@ -66,7 +74,10 @@ public class SendChunkPacket extends ExternalServerPacket {
+         out.writeUtf(world);
+         out.writeInt(cx);
+         out.writeInt(cz);
+-        out.writeByteArray(data);
++        // MultiPaper start - MrIvanPlays - better writes
++        out.writeBoolean(hasData);
++        if (hasData) { out.writeNbt(this.tag); }
++        // MultiPaper end - MrIvanPlays
+     }
+ 
+     @Override
+@@ -74,7 +85,7 @@ public class SendChunkPacket extends ExternalServerPacket {
+         try {
+             Consumer<DataInputStream> callback = connection.chunkCallbacks.remove(new ChunkKey(world, cx, cz));
+             if (callback != null) {
+-                if (data.length == 0) {
++                if (!hasData) { // MultiPaper - MrIvanPlays - change
+                     LOGGER.warn(connection.externalServer.getName() + " sent us an empty chunk for " + world + "," + cx + "," + cz + ", force loading it from disk");
+                     MultiPaper.forceReadChunk(world, "region", cx, cz).thenAccept(data2 -> {
+                         if (data2.length == 0) callback.accept(null);
+@@ -85,15 +96,15 @@ public class SendChunkPacket extends ExternalServerPacket {
+                         }
+                     });
+                 } else {
+-                    callback.accept(new DataInputStream(new ByteArrayInputStream(data)));
++                    callback.accept(new DataInputStream(new ByteArrayInputStream(MultiPaper.nbtToBytes(tag))));
+                 }
+             } else {
+-                if (data.length == 0) {
++                if (!hasData) { // MultiPaper - MrIvanPlays - change
+                     return;
+                 }
+ 
+                 long startTime = System.nanoTime();
+-                CompoundTag tag = MultiPaper.nbtFromBytes(data);
++                //CompoundTag tag = MultiPaper.nbtFromBytes(data); // MultiPaper - MrIvanPlays - no
+                 xymb.NBTDeduplicator.deduplicateContainersOnChunkRead(tag, new ChunkKey(world, cx, cz));
+                 if (System.nanoTime() - startTime > 50000000) {
+                     System.out.println("READ_CHUNK_JUMBO_PACKET " + ((System.nanoTime() - startTime) / 1000000.) + " " + world + " " + cx + " " + cz);
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/SendEntitiesPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/SendEntitiesPacket.java
+index 73c009e391073b672f49c797d0b50076becbdf22..33aec8056e6a39562d5ae9cdb03b0296d88aea8b 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/SendEntitiesPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/SendEntitiesPacket.java
+@@ -40,7 +40,7 @@ public class SendEntitiesPacket extends ExternalServerPacket {
+     private final String world;
+     private final int cx;
+     private final int cz;
+-    private final byte[] data;
++    private final CompoundTag data;
+ 
+     public SendEntitiesPacket(LevelChunk chunk) {
+         this(chunk.level, chunk.getPos());
+@@ -79,6 +79,8 @@ public class SendEntitiesPacket extends ExternalServerPacket {
+         this.cx = cx;
+         this.cz = cz;
+ 
++        this.data = tag;
++        /*
+         try {
+             if (tag == null) {
+                 data = new byte[0];
+@@ -88,13 +90,18 @@ public class SendEntitiesPacket extends ExternalServerPacket {
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++         */
+     }
+ 
+     public SendEntitiesPacket(FriendlyByteBuf in) {
+         world = in.readUtf();
+         cx = in.readInt();
+         cz = in.readInt();
+-        data = in.readByteArray();
++        if (in.readBoolean()) {
++            data = in.readNbt();
++        } else {
++            data = null;
++        }
+     }
+ 
+     @Override
+@@ -102,7 +109,10 @@ public class SendEntitiesPacket extends ExternalServerPacket {
+         out.writeUtf(world);
+         out.writeInt(cx);
+         out.writeInt(cz);
+-        out.writeByteArray(data);
++        out.writeBoolean(this.data != null);
++        if (data != null) {
++            out.writeNbt(data);
++        }
+     }
+ 
+     @Override
+@@ -110,14 +120,14 @@ public class SendEntitiesPacket extends ExternalServerPacket {
+         try {
+             Consumer<DataInputStream> callback = connection.entitiesCallbacks.remove(new ChunkKey(world, cx, cz));
+             if (callback != null) {
+-                if (data.length == 0) {
++                if (data == null) {
+                     LOGGER.warn(connection.externalServer.getName() + " sent us an empty entities for " + world + "," + cx + "," + cz + ", force loading it from disk");
+                     MultiPaper.forceReadChunk(world, "entities", cx, cz).thenAccept(data2 -> callback.accept(data2.length == 0 ? null : new DataInputStream(new InflaterInputStream(new ByteArrayInputStream(data2)))));
+                 } else {
+-                    callback.accept(new DataInputStream(new ByteArrayInputStream(data)));
++                    callback.accept(new DataInputStream(new ByteArrayInputStream(MultiPaper.nbtToBytes(data))));
+                 }
+             } else {
+-                if (data.length == 0) {
++                if (data == null) {
+                     return;
+                 }
+ 
+@@ -126,8 +136,7 @@ public class SendEntitiesPacket extends ExternalServerPacket {
+                 ServerLevel level = ((CraftWorld) Bukkit.getWorld(world)).getHandle();
+                 // Check that we have these entities loaded in the first place
+                 if (level.entityManager.chunkLoadStatuses.containsKey(pos.longKey)) {
+-                    CompoundTag tag = MultiPaper.nbtFromBytes(data);
+-                    ListTag entities = tag == null ? new ListTag() : tag.getList("Entities", Tag.TAG_COMPOUND);
++                    ListTag entities = data.getList("Entities", Tag.TAG_COMPOUND);
+                     MultiPaper.runSync(() -> {
+                         for (Tag entityTag : entities) {
+                             CompoundTag entityTagCompound = (CompoundTag) entityTag;
+diff --git a/src/main/java/puregero/multipaper/externalserverprotocol/SendTickListPacket.java b/src/main/java/puregero/multipaper/externalserverprotocol/SendTickListPacket.java
+index 5024e2996aece59f812ece288d4d8a2480f64e3d..c0fb3ae6c552b29e5988d0e379269d4a4f4ff4be 100644
+--- a/src/main/java/puregero/multipaper/externalserverprotocol/SendTickListPacket.java
++++ b/src/main/java/puregero/multipaper/externalserverprotocol/SendTickListPacket.java
+@@ -45,13 +45,16 @@ public class SendTickListPacket extends ExternalServerPacket {
+         this.world = in.readUtf();
+         this.cx = in.readInt();
+         this.cz = in.readInt();
++        this.tag = in.readNbt();
+ 
++        /*
+         byte[] data = in.readByteArray();
+         try {
+             tag = MultiPaper.nbtFromBytes(data);
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++         */
+     }
+ 
+     @Override
+@@ -59,7 +62,9 @@ public class SendTickListPacket extends ExternalServerPacket {
+         out.writeUtf(world);
+         out.writeInt(cx);
+         out.writeInt(cz);
++        out.writeNbt(tag);
+ 
++        /*
+         try {
+             byte[] data = MultiPaper.nbtToBytes(tag);
+ 
+@@ -67,6 +72,7 @@ public class SendTickListPacket extends ExternalServerPacket {
+         } catch (IOException e) {
+             throw new RuntimeException(e);
+         }
++         */
+     }
+ 
+     @Override
